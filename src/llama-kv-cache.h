@@ -90,6 +90,12 @@ private:
 // TODO: add notion of max sequences
 class llama_kv_cache_unified : public llama_kv_cache {
 public:
+    // commit/restore cache
+    struct slot_range {
+        uint32_t c0 = 0; // note: these are cell indices, not sequence positions
+        uint32_t c1 = 0;
+    };
+
     struct kv_cell {
         llama_pos pos   = -1;
         llama_pos delta =  0;
@@ -107,6 +113,52 @@ public:
         bool is_same_seq(const kv_cell & other) const {
             return seq_id == other.seq_id;
         }
+    };
+
+    struct kv_cells {
+        kv_cells(uint32_t size);
+
+        void clear();
+
+        bool seq_rm  (llama_seq_id seq_id,                              llama_pos p0, llama_pos p1);
+        void seq_cp  (llama_seq_id seq_id_src, llama_seq_id seq_id_dst, llama_pos p0, llama_pos p1);
+        void seq_keep(llama_seq_id seq_id);
+        bool seq_add (llama_seq_id seq_id,                              llama_pos p0, llama_pos p1, llama_pos delta);
+        bool seq_div (llama_seq_id seq_id,                              llama_pos p0, llama_pos p1, int d);
+
+        llama_pos seq_pos_max(llama_seq_id seq_id) const;
+
+        void restore();
+        void commit();
+
+        bool find_slot(const llama_ubatch & batch, uint32_t padding);
+
+        // find how many cells are currently in use
+        uint32_t cell_max() const;
+
+        // Note: The value of head isn't only used to optimize searching
+        // for a free KV slot. llama_decode_impl also uses it, so it
+        // cannot be freely changed after a slot has been allocated.
+        uint32_t head = 0;
+        uint32_t size = 0;
+        uint32_t used = 0; // used cells (i.e. at least one seq_id)
+
+        // computed before each graph build
+        uint32_t n = 0;
+
+        std::vector<kv_cell> data;
+
+        // pending cell updates that are not yet committed
+        struct {
+            std::vector<slot_range> ranges;
+        } pending;
+    };
+
+    struct kv_layer {
+        kv_cells * cells = nullptr;
+
+        ggml_tensor * k = nullptr;
+        ggml_tensor * v = nullptr;
     };
 
     static uint32_t get_padding(const llama_cparams & cparams);
@@ -166,25 +218,31 @@ public:
 
     bool get_can_shift() const override;
 
+    const kv_layer & get_layer(int32_t il) const;
+
+    uint32_t n_base() const;
+    uint32_t n_swa() const;
+
+    void set_input_kq_mask    (ggml_tensor * dst, const llama_ubatch * ubatch, bool causal_attn) const;
+    void set_input_kq_mask_swa(ggml_tensor * dst, const llama_ubatch * ubatch, bool causal_attn) const;
+    void set_input_k_shift    (ggml_tensor * dst) const;
+    void set_input_pos_bucket (ggml_tensor * dst, const llama_ubatch * ubatch) const;
+
     // state write/load
 
     void state_write(llama_io_write_i & io, llama_seq_id seq_id = -1) const override;
     void state_read (llama_io_read_i  & io, llama_seq_id seq_id = -1) override;
 
-    // Note: The value of head isn't only used to optimize searching
-    // for a free KV slot. llama_decode_impl also uses it, so it
-    // cannot be freely changed after a slot has been allocated.
-    uint32_t head = 0;
-    uint32_t size = 0;
-    uint32_t used = 0; // used cells (i.e. at least one seq_id)
+private:
+    enum kv_cells_type {
+        KV_CELLS_TYPE_BASE = 0,
+        KV_CELLS_TYPE_SWA,
+        KV_CELLS_TYPE_COUNT,
+    };
 
-    // computed before each graph build
-    uint32_t n = 0;
+    std::array<std::unique_ptr<kv_cells>, KV_CELLS_TYPE_COUNT> cells_arr;
 
-    std::vector<kv_cell> cells;
-
-    std::vector<ggml_tensor *> k_l; // per layer
-    std::vector<ggml_tensor *> v_l;
+    std::vector<kv_layer> layers;
 
 private:
     const llama_model & model;
@@ -212,20 +270,6 @@ private:
 
     // return true if cells have been moved
     bool defrag_prepare(int32_t n_max_nodes);
-
-    // commit/restore cache
-    struct slot_range {
-        uint32_t c0 = 0; // note: these are cell indices, not sequence positions
-        uint32_t c1 = 0;
-    };
-
-    // pending cell updates that are not yet committed
-    struct {
-        std::vector<slot_range> ranges;
-    } pending;
-
-    // find how many cells are currently in use
-    uint32_t cell_max() const;
 
     size_t total_size() const;
 
