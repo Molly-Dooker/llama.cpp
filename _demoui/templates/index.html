@@ -1,27 +1,17 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 
 <head>
         <meta charset="UTF-8">
         <title>llama.cpp Batch Chat</title>
         <style>
                 body {
-                        font-family: Arial;
+                        font-family: Arial, sans-serif;
                         margin: 40px;
                 }
 
-                #output {
-                        white-space: pre-wrap;
-                        background: #f0f0f0;
-                        padding: 20px;
-                        border-radius: 6px;
-                        height: 500px;
-                        overflow-y: auto;
-                }
-
-                .tps {
-                        color: #999;
-                        font-size: 0.9em;
+                #controls {
+                        margin-bottom: 20px;
                 }
 
                 button {
@@ -35,28 +25,51 @@
                         margin-right: 10px;
                 }
 
-                #controls {
-                        margin-bottom: 20px;
+                #output {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 20px;
+                }
+
+                .chat-entry {
+                        background: #f9f9f9;
+                        border: 1px solid #ddd;
+                        border-radius: 8px;
+                        padding: 15px;
+                        position: relative;
+                        white-space: pre-wrap;
+                        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                }
+
+                .tps {
+                        position: absolute;
+                        top: 10px;
+                        right: 15px;
+                        font-size: 0.85em;
+                        color: #888;
                 }
         </style>
 </head>
 
 <body>
         <h2>📄 스크립트 실행기</h2>
+
         <div id="controls">
                 <button onclick="runAll()">모든 줄 실행</button>
                 <button onclick="stop()">정지</button>
         </div>
+
         <div id="output"></div>
 
         <script>
                 let controller = null;
+                let currentEntry = null;
 
                 function runAll() {
                         const output = document.getElementById("output");
                         output.innerHTML = "";
 
-                        controller = new AbortController(); // 새 AbortController 생성
+                        controller = new AbortController();
                         const signal = controller.signal;
 
                         fetch("/run", { method: "POST", signal }).then(res => {
@@ -68,6 +81,7 @@
                                 function read() {
                                         reader.read().then(({ done, value }) => {
                                                 if (done) return;
+
                                                 const chunk = decoder.decode(value, { stream: true });
                                                 buffer += chunk;
 
@@ -75,15 +89,26 @@
                                                 buffer = "";
 
                                                 parts.forEach(part => {
-                                                        if (part.startsWith("<tps>")) {
+                                                        if (part.startsWith("🧑‍💻 Prompt:")) {
+                                                                // 새 entry 박스 생성
+                                                                currentEntry = document.createElement("div");
+                                                                currentEntry.className = "chat-entry";
+                                                                currentEntry.innerText = part;
+                                                                output.appendChild(currentEntry);
+                                                        } else if (part.startsWith("<tps>")) {
                                                                 const tps = part.replace("<tps>", "").replace("</tps>", "");
-                                                                document.querySelector(".tps")?.remove();
-                                                                const tpsSpan = document.createElement("div");
-                                                                tpsSpan.className = "tps";
-                                                                tpsSpan.innerText = `⚡ Token/s: ${tps}`;
-                                                                output.appendChild(tpsSpan);
-                                                        } else {
-                                                                output.innerHTML += part;
+                                                                if (currentEntry) {
+                                                                        let tpsSpan = currentEntry.querySelector(".tps");
+                                                                        if (!tpsSpan) {
+                                                                                tpsSpan = document.createElement("div");
+                                                                                tpsSpan.className = "tps";
+                                                                                currentEntry.appendChild(tpsSpan);
+                                                                        }
+                                                                        tpsSpan.innerText = `⚡ ${tps} tokens/sec`;
+                                                                }
+                                                        } else if (currentEntry) {
+                                                                const textNode = document.createTextNode(part);
+                                                                currentEntry.appendChild(textNode);
                                                         }
                                                 });
 
@@ -91,12 +116,11 @@
                                                 read();
                                         }).catch(err => {
                                                 if (err.name === "AbortError") {
-                                                        console.log("Fetch aborted.");
-                                                        const stopNotice = document.createElement("div");
-                                                        stopNotice.innerText = "⏹️ 실행 중단됨.";
-                                                        output.appendChild(stopNotice);
+                                                        const notice = document.createElement("div");
+                                                        notice.innerText = "⏹ 실행 중단됨.";
+                                                        output.appendChild(notice);
                                                 } else {
-                                                        console.error("Read error:", err);
+                                                        console.error("Stream error:", err);
                                                 }
                                         });
                                 }
