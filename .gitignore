@@ -11,7 +11,7 @@
 *.gcda
 *.gcno
 *.gcov
-# *.gguf
+*.gguf
 *.gguf.json
 *.lastModified
 *.log
