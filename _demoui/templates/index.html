@@ -32,21 +32,34 @@
                         border: none;
                         border-radius: 6px;
                         cursor: pointer;
+                        margin-right: 10px;
+                }
+
+                #controls {
+                        margin-bottom: 20px;
                 }
         </style>
 </head>
 
 <body>
         <h2>📄 스크립트 실행기</h2>
-        <button onclick="runAll()">모든 줄 실행</button>
+        <div id="controls">
+                <button onclick="runAll()">모든 줄 실행</button>
+                <button onclick="stop()">정지</button>
+        </div>
         <div id="output"></div>
 
         <script>
+                let controller = null;
+
                 function runAll() {
                         const output = document.getElementById("output");
                         output.innerHTML = "";
 
-                        fetch("/run", { method: "POST" }).then(res => {
+                        controller = new AbortController(); // 새 AbortController 생성
+                        const signal = controller.signal;
+
+                        fetch("/run", { method: "POST", signal }).then(res => {
                                 const reader = res.body.getReader();
                                 const decoder = new TextDecoder("utf-8");
 
@@ -58,7 +71,6 @@
                                                 const chunk = decoder.decode(value, { stream: true });
                                                 buffer += chunk;
 
-                                                // 실시간 TPS 처리
                                                 const parts = buffer.split(/(<tps>.*?<\/tps>)/g);
                                                 buffer = "";
 
@@ -77,11 +89,31 @@
 
                                                 output.scrollTop = output.scrollHeight;
                                                 read();
+                                        }).catch(err => {
+                                                if (err.name === "AbortError") {
+                                                        console.log("Fetch aborted.");
+                                                        const stopNotice = document.createElement("div");
+                                                        stopNotice.innerText = "⏹️ 실행 중단됨.";
+                                                        output.appendChild(stopNotice);
+                                                } else {
+                                                        console.error("Read error:", err);
+                                                }
                                         });
                                 }
 
                                 read();
+                        }).catch(err => {
+                                if (err.name !== "AbortError") {
+                                        console.error("Fetch error:", err);
+                                }
                         });
+                }
+
+                function stop() {
+                        if (controller) {
+                                controller.abort();
+                                controller = null;
+                        }
                 }
         </script>
 </body>
