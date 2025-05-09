@@ -101,6 +101,17 @@
                         cursor: pointer;
                 }
 
+                button.reset {
+                        align-self: flex-start;
+                        padding: 8px 20px;
+                        font-size: 1em;
+                        background: #ff4d4f;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        cursor: pointer;
+                }
+
                 pre {
                         background: #333;
                         color: #eee;
@@ -124,13 +135,18 @@
 
                 <div id="input-area">
                         <textarea id="prompt" placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"></textarea>
-                        <button class="send" onclick="sendChat()">보내기</button>
+                        <div style="display: flex; gap: 8px;">
+                                <button class="send" onclick="sendChat()">보내기</button>
+                                <button class="reset" id="resetBtn">초기화</button>
+                        </div>
                 </div>
         </div>
 
         <script>
                 const promptBox = document.getElementById("prompt");
                 const chatBox = document.getElementById("chat");
+                const resetBtn = document.getElementById("resetBtn");
+                let abortController = null;
 
                 promptBox.addEventListener("keydown", function (e) {
                         if (e.key === "Enter" && !e.shiftKey) {
@@ -139,9 +155,18 @@
                         }
                 });
 
+                resetBtn.addEventListener("click", () => {
+                        if (abortController) abortController.abort();
+                        chatBox.innerHTML = "";
+                        promptBox.value = "";
+                });
+
                 function sendChat() {
                         const prompt = promptBox.value.trim();
                         if (!prompt) return;
+
+                        if (abortController) abortController.abort();
+                        abortController = new AbortController();
 
                         promptBox.value = "";
 
@@ -176,7 +201,8 @@
                         fetch("/chat", {
                                 method: "POST",
                                 headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ prompt })
+                                body: JSON.stringify({ prompt }),
+                                signal: abortController.signal
                         }).then(res => {
                                 const reader = res.body.getReader();
                                 const decoder = new TextDecoder("utf-8");
@@ -201,7 +227,6 @@
 
                                                                 const html = marked.parse(assistantRaw);
                                                                 assistantBubble.innerHTML = html;
-
                                                                 assistantBubble.appendChild(copyBtn);
 
                                                                 if (tpsText) {
@@ -218,10 +243,13 @@
 
                                                 chatBox.scrollTop = chatBox.scrollHeight;
                                                 read();
+                                        }).catch(err => {
+                                                if (err.name !== 'AbortError') console.error(err);
                                         });
                                 }
-
                                 read();
+                        }).catch(err => {
+                                if (err.name !== 'AbortError') console.error(err);
                         });
                 }
         </script>
