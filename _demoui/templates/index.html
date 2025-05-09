@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+        <meta charset="UTF-8">
+        <title>llama.cpp Batch Chat</title>
+        <style>
+                body {
+                        font-family: Arial;
+                        margin: 40px;
+                }
+
+                #output {
+                        white-space: pre-wrap;
+                        background: #f0f0f0;
+                        padding: 20px;
+                        border-radius: 6px;
+                        height: 500px;
+                        overflow-y: auto;
+                }
+
+                .tps {
+                        color: #999;
+                        font-size: 0.9em;
+                }
+
+                button {
+                        padding: 10px 20px;
+                        font-size: 1em;
+                        background: #10a37f;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        cursor: pointer;
+                }
+        </style>
+</head>
+
+<body>
+        <h2>📄 스크립트 실행기</h2>
+        <button onclick="runAll()">모든 줄 실행</button>
+        <div id="output"></div>
+
+        <script>
+                function runAll() {
+                        const output = document.getElementById("output");
+                        output.innerHTML = "";
+
+                        fetch("/run", { method: "POST" }).then(res => {
+                                const reader = res.body.getReader();
+                                const decoder = new TextDecoder("utf-8");
+
+                                let buffer = "";
+
+                                function read() {
+                                        reader.read().then(({ done, value }) => {
+                                                if (done) return;
+                                                const chunk = decoder.decode(value, { stream: true });
+                                                buffer += chunk;
+
+                                                // 실시간 TPS 처리
+                                                const parts = buffer.split(/(<tps>.*?<\/tps>)/g);
+                                                buffer = "";
+
+                                                parts.forEach(part => {
+                                                        if (part.startsWith("<tps>")) {
+                                                                const tps = part.replace("<tps>", "").replace("</tps>", "");
+                                                                document.querySelector(".tps")?.remove();
+                                                                const tpsSpan = document.createElement("div");
+                                                                tpsSpan.className = "tps";
+                                                                tpsSpan.innerText = `⚡ Token/s: ${tps}`;
+                                                                output.appendChild(tpsSpan);
+                                                        } else {
+                                                                output.innerHTML += part;
+                                                        }
+                                                });
+
+                                                output.scrollTop = output.scrollHeight;
+                                                read();
+                                        });
+                                }
+
+                                read();
+                        });
+                }
+        </script>
+</body>
+
+</html>
