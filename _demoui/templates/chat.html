@@ -161,7 +161,6 @@
                         copyBtn.title = "복사";
                         assistantBubble.appendChild(copyBtn);
 
-                        // 복사 이벤트
                         copyBtn.onclick = () => {
                                 const tempDiv = document.createElement("div");
                                 tempDiv.innerHTML = assistantBubble.dataset.raw || "";
@@ -171,7 +170,8 @@
                                 setTimeout(() => copyBtn.innerText = "📋", 1500);
                         };
 
-                        let assistantRaw = "";  // Markdown 원본 누적
+                        let assistantRaw = "";
+                        let tpsText = "";
 
                         fetch("/chat", {
                                 method: "POST",
@@ -185,6 +185,7 @@
                                 function read() {
                                         reader.read().then(({ done, value }) => {
                                                 if (done) return;
+
                                                 const chunk = decoder.decode(value, { stream: true });
                                                 buffer += chunk;
 
@@ -193,22 +194,25 @@
 
                                                 parts.forEach(part => {
                                                         if (part.startsWith("<tps>")) {
-                                                                const tps = part.replace("<tps>", "").replace("</tps>", "");
-                                                                let tpsSpan = assistantBubble.querySelector(".tps");
-                                                                if (!tpsSpan) {
-                                                                        tpsSpan = document.createElement("div");
-                                                                        tpsSpan.className = "tps";
-                                                                        assistantBubble.appendChild(tpsSpan);
-                                                                }
-                                                                tpsSpan.innerText = `⚡ ${tps} tokens/sec`;
+                                                                tpsText = part.replace("<tps>", "").replace("</tps>", "");
                                                         } else {
                                                                 assistantRaw += part;
                                                                 assistantBubble.dataset.raw = assistantRaw;
 
-                                                                // 타이핑 애니메이션처럼 리렌더링
                                                                 const html = marked.parse(assistantRaw);
                                                                 assistantBubble.innerHTML = html;
+
                                                                 assistantBubble.appendChild(copyBtn);
+
+                                                                if (tpsText) {
+                                                                        let tpsSpan = assistantBubble.querySelector(".tps");
+                                                                        if (!tpsSpan) {
+                                                                                tpsSpan = document.createElement("div");
+                                                                                tpsSpan.className = "tps";
+                                                                                assistantBubble.appendChild(tpsSpan);
+                                                                        }
+                                                                        tpsSpan.innerText = `⚡ ${tpsText} tokens/sec`;
+                                                                }
                                                         }
                                                 });
 

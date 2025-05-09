@@ -4,7 +4,6 @@ import json
 import time
 
 app = Flask(__name__)
-
 LLAMA_SERVER_URL = "http://localhost:8080/v1/chat/completions"
 
 @app.route("/")
@@ -17,7 +16,7 @@ def chat():
     user_input = data.get("prompt", "")
 
     payload = {
-        "model": "model.gguf",  # llama-server 실행 시 지정한 모델 이름과 일치
+        "model": "model.gguf",  # llama-server 실행 시 모델 이름과 일치해야 함
         "messages": [{"role": "user", "content": user_input}],
         "stream": True
     }
@@ -41,7 +40,6 @@ def chat():
                             yield f"<tps>{tps:.2f}</tps>"
 
     return Response(stream_with_context(generate()), content_type="text/plain")
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
