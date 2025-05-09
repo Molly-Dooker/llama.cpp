@@ -7,11 +7,21 @@
         <style>
                 body {
                         font-family: Arial, sans-serif;
-                        margin: 40px;
+                        margin: 0;
+                        padding: 0;
+                }
+
+                #header {
+                        position: sticky;
+                        top: 0;
+                        background: white;
+                        z-index: 10;
+                        padding: 20px 40px 10px 40px;
+                        border-bottom: 1px solid #ddd;
                 }
 
                 #controls {
-                        margin-bottom: 20px;
+                        margin-top: 10px;
                 }
 
                 button {
@@ -26,6 +36,7 @@
                 }
 
                 #output {
+                        padding: 20px 40px;
                         display: flex;
                         flex-direction: column;
                         gap: 20px;
@@ -52,11 +63,12 @@
 </head>
 
 <body>
-        <h2>📄 스크립트 실행기</h2>
-
-        <div id="controls">
-                <button onclick="runAll()">모든 줄 실행</button>
-                <button onclick="stop()">정지</button>
+        <div id="header">
+                <h2>📄 스크립트 실행기</h2>
+                <div id="controls">
+                        <button onclick="runAll()">모든 줄 실행</button>
+                        <button onclick="stop()">정지</button>
+                </div>
         </div>
 
         <div id="output"></div>
@@ -90,7 +102,6 @@
 
                                                 parts.forEach(part => {
                                                         if (part.startsWith("🧑‍💻 Prompt:")) {
-                                                                // 새 entry 박스 생성
                                                                 currentEntry = document.createElement("div");
                                                                 currentEntry.className = "chat-entry";
                                                                 currentEntry.innerText = part;
