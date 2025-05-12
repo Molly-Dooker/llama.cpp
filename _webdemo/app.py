@@ -6,41 +6,21 @@ import os
 from pydub import AudioSegment
 import pydub.exceptions # pydub 예외를 명시적으로 임포트
 import tempfile # 임시 파일 생성을 위해 임포트
-import openai # OpenAI 라이브러리 임포트
 
 app = Flask(__name__)
 LLAMA_SERVER_URL = "http://localhost:8080/v1/chat/completions"
+import assemblyai as aai
+aai.settings.api_key = "eb7798f0e37d414a8435b42c17a20b58"
 
-# OpenAI API 키 설정 (환경 변수에서 로드 권장)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-if not OPENAI_API_KEY:
-    print("경고: OPENAI_API_KEY 환경 변수가 설정되지 않았습니다. STT 변환 기능이 작동하지 않습니다.")
-# OpenAI 클라이언트 초기화 (API 키가 있을 경우)
-# 애플리케이션 시작 시 또는 첫 요청 시 초기화 가능
-# 여기서는 함수 내에서 필요시 초기화 하도록 변경
-# client = None
-# if OPENAI_API_KEY:
-# client = openai.OpenAI(api_key=OPENAI_API_KEY)
+def transcribe_audio_aai(audio_file_path):    
+    config = aai.TranscriptionConfig(speech_model=aai.SpeechModel.best)
+    transcript = aai.Transcriber(config=config).transcribe(audio_file_path)
+    if transcript.status == "error":
+        return None, 'error!'
+    else:
+        return transcript.text, None
+        
 
-
-def transcribe_audio_openai(audio_file_path):
-    # if not OPENAI_API_KEY:
-    #     return None, "OpenAI API 키가 설정되지 않았습니다."
-    # try:
-    #     client = openai.OpenAI(api_key=OPENAI_API_KEY) # 함수 호출 시 클라이언트 초기화
-    #     with open(audio_file_path, "rb") as audio_file:
-    #         transcription = client.audio.transcriptions.create(
-    #             model="whisper-1",
-    #             file=audio_file
-    #         )
-    #     return transcription.text, None
-    # except openai.APIError as e:
-    #     print(f"OpenAI API 오류: {e}")
-    #     return None, f"OpenAI API 오류: {str(e)}"
-    # except Exception as e:
-    #     print(f"STT 변환 중 일반 오류 발생: {e}")
-    #     return None, f"STT 변환 중 오류 발생: {str(e)}"
-    return 'what is 1+1', None
 @app.route("/")
 def index():
     return render_template("chat.html")
@@ -156,8 +136,7 @@ def upload_audio():
         print(f"INFO: 오디오 파일이 '{target_filename}'으로 저장되었습니다.")
 
         # STT 변환 시도
-        transcribed_text, transcription_error = transcribe_audio_openai(target_filename)
-        
+        transcribed_text, transcription_error = transcribe_audio_aai(target_filename)
         if transcription_error:
             print(f"ERROR_TRANSCRIPTION: {transcription_error}")
             return jsonify({
@@ -166,7 +145,7 @@ def upload_audio():
                 "transcribed_text": None
             }), 200 # 파일 저장은 성공했으므로 200, 클라이언트에서 transcribed_text 유무로 처리
         
-        if transcribed_text is not None:
+        if transcribed_text is not None and transcribed_text is not '':
             print(f"INFO: 오디오 STT 변환 결과: {transcribed_text}")
             return jsonify({
                 "message": f"'{target_filename}'에 오디오가 저장 및 STT 변환되었습니다.",
