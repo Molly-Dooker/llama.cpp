@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+        <meta charset="UTF-8">
+        <title>llama.cpp 자유채팅</title>
+        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+        <style>
+                /* ... (기존 body, container, chat, bubble 등 스타일은 동일) ... */
+                body {
+                        font-family: sans-serif;
+                        background: #f0f2f5;
+                        margin: 0;
+                        padding: 0;
+                        display: flex;
+                        justify-content: center;
+                        align-items: flex-start;
+                        min-height: 100vh;
+                }
+
+                .container {
+                        max-width: 800px;
+                        width: 90%;
+                        margin-top: 40px;
+                        margin-bottom: 40px;
+                        background: white;
+                        padding: 20px;
+                        border-radius: 8px;
+                        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+                        display: flex;
+                        flex-direction: column;
+                }
+
+                #chat {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 15px;
+                        max-height: 500px;
+                        overflow-y: auto;
+                        padding-bottom: 10px;
+                        margin-bottom: 15px;
+                        flex-grow: 1;
+                }
+
+                .bubble {
+                        padding: 12px 16px;
+                        border-radius: 18px;
+                        max-width: 100%;
+                        /* bubble 내부의 pre 태그가 bubble을 넘어가지 않도록 */
+                        white-space: pre-wrap;
+                        line-height: 1.5;
+                        position: relative;
+                        overflow-wrap: break-word;
+                }
+
+                .user {
+                        align-self: flex-end;
+                        background: #10a37f;
+                        color: white;
+                        border-bottom-right-radius: 4px;
+                }
+
+                .assistant {
+                        align-self: flex-start;
+                        background: #e5e5ea;
+                        color: black;
+                        border-bottom-left-radius: 4px;
+                        position: relative;
+                }
+
+                .assistant pre {
+                        /* assistant 내부의 pre 태그 스타일 */
+                        max-width: 100%;
+                        /* pre 태그가 bubble 너비를 넘지 않도록 */
+                        overflow-x: auto;
+                        /* pre 태그 내용이 길면 가로 스크롤 */
+                }
+
+
+                .tps {
+                        font-size: 0.8em;
+                        color: #666;
+                        margin-top: 8px;
+                }
+
+                .copy-button {
+                        position: absolute;
+                        top: 8px;
+                        right: 10px;
+                        background: transparent;
+                        border: none;
+                        font-size: 0.9em;
+                        color: #666;
+                        cursor: pointer;
+                        padding: 3px;
+                        z-index: 1;
+                        /* 다른 내용 위에 오도록 */
+                }
+
+                .copy-button:hover {
+                        color: #333;
+                }
+
+
+                pre {
+                        /* 전역 pre 스타일. marked.js가 생성 */
+                        background: #333;
+                        color: #eee;
+                        padding: 10px;
+                        border-radius: 6px;
+                        overflow-x: auto;
+                        /* 기본적으로 가로 스크롤 */
+                        max-width: 100%;
+                        /* 부모 요소 너비를 넘지 않도록 */
+                        box-sizing: border-box;
+                        /* 패딩과 테두리가 너비에 포함되도록 */
+                }
+
+                code {
+                        /* 전역 code 스타일. marked.js가 생성 */
+                        background: #eee;
+                        padding: 2px 4px;
+                        border-radius: 4px;
+                        font-family: monospace;
+                }
+
+                pre code {
+                        /* pre 내부의 code는 별도 배경색/패딩 불필요 */
+                        background: none;
+                        padding: 0;
+                }
+
+
+                .controls-area {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 10px;
+                }
+
+                textarea#prompt {
+                        width: 100%;
+                        box-sizing: border-box;
+                        height: 80px;
+                        font-size: 1em;
+                        padding: 10px;
+                        border: 1px solid #ccc;
+                        border-radius: 6px;
+                        resize: vertical;
+                }
+
+                .action-buttons-row {
+                        display: flex;
+                        gap: 10px;
+                        justify-content: center;
+                        align-items: stretch;
+                }
+
+                .action-buttons-row button {
+                        padding: 10px 15px;
+                        font-size: 0.9em;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        cursor: pointer;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        gap: 5px;
+                        flex-grow: 1;
+                        /* 모든 버튼이 동일하게 늘어나도록 수정 */
+                        flex-basis: 0;
+                        /* 모든 버튼의 기본 너비를 0으로 설정하여 동일 비율로 공간 분배 */
+                }
+
+                button.send {
+                        background: #28a745;
+                        /* flex-grow: 1; 삭제 또는 주석 처리 (위에서 공통으로 설정됨) */
+                }
+
+                button#recordBtn {
+                        background-color: #17a2b8;
+                }
+
+                button#recordBtn.recording {
+                        background-color: #dc3545;
+                }
+
+                button.reset {
+                        background: #dc3545;
+                }
+
+                #recordStatus {
+                        display: none;
+                        text-align: center;
+                        font-size: 0.9em;
+                        color: #555;
+                }
+        </style>
+</head>
+
+<body>
+        <div class="container">
+                <h2>💬 llama.cpp 자유채팅</h2>
+                <div id="chat"></div>
+
+                <div class="controls-area">
+                        <textarea id="prompt" placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"></textarea>
+                        <div class="action-buttons-row">
+                                <button class="send" id="sendBtn">보내기</button>
+                                <button id="recordBtn">🎤 녹음 시작</button>
+                                <button class="reset" id="resetBtn">초기화</button>
+                        </div>
+                        <span id="recordStatus"></span>
+                </div>
+        </div>
+
+        <script>
+                // JavaScript 코드는 변경 없음
+                const promptBox = document.getElementById("prompt");
+                const chatBox = document.getElementById("chat");
+                const sendBtn = document.getElementById("sendBtn");
+                const resetBtn = document.getElementById("resetBtn");
+                let abortController = null;
+
+                const recordBtn = document.getElementById('recordBtn');
+                const recordStatus = document.getElementById('recordStatus');
+                let mediaRecorder;
+                let audioChunks = [];
+                let isRecording = false;
+
+                promptBox.addEventListener("keydown", function (e) {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                                e.preventDefault();
+                                sendChat();
+                        }
+                });
+
+                sendBtn.addEventListener("click", () => {
+                        sendChat();
+                });
+
+                resetBtn.addEventListener("click", () => {
+                        if (abortController) abortController.abort();
+                        chatBox.innerHTML = "";
+                        promptBox.value = "";
+                        if (isRecording) {
+                                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                                        mediaRecorder.stop();
+                                }
+                                isRecording = false;
+                                recordBtn.innerHTML = '🎤 녹음 시작';
+                                recordBtn.classList.remove('recording');
+                                recordStatus.textContent = '';
+                                recordStatus.style.display = 'none';
+                                console.log('녹음 취소됨.');
+                                audioChunks = [];
+                        }
+                });
+
+                recordBtn.addEventListener('click', async () => {
+                        if (!isRecording) {
+                                try {
+                                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                                        const options = {};
+                                        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                                                options.mimeType = 'audio/webm;codecs=opus';
+                                        } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+                                                options.mimeType = 'audio/webm';
+                                        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+                                                options.mimeType = 'audio/ogg;codecs=opus';
+                                        } else {
+                                                console.warn("선호하는 webm/opus MIME 타입이 지원되지 않습니다. 브라우저 기본값을 사용합니다.");
+                                        }
+
+                                        mediaRecorder = new MediaRecorder(stream, options);
+                                        audioChunks = [];
+
+                                        mediaRecorder.ondataavailable = event => {
+                                                audioChunks.push(event.data);
+                                        };
+
+                                        mediaRecorder.onstop = async () => {
+                                                const blobMimeType = mediaRecorder.mimeType || (options.mimeType || 'audio/webm');
+                                                const audioBlob = new Blob(audioChunks, { type: blobMimeType });
+                                                audioChunks = [];
+                                                const formData = new FormData();
+                                                let recordingFilename = 'recording';
+                                                if (blobMimeType.includes('webm')) recordingFilename += '.webm';
+                                                else if (blobMimeType.includes('ogg')) recordingFilename += '.ogg';
+
+                                                formData.append('audio_data', audioBlob, recordingFilename);
+
+                                                recordStatus.textContent = '오디오 업로드 및 변환 중...';
+                                                recordStatus.style.display = 'block';
+                                                console.log('오디오 업로드 중...');
+
+                                                try {
+                                                        const response = await fetch('/upload_audio', {
+                                                                method: 'POST',
+                                                                body: formData
+                                                        });
+                                                        const result = await response.json();
+
+                                                        if (response.ok && result.file_saved) {
+                                                                console.log(`서버 메시지: ${result.message}`);
+                                                                recordStatus.textContent = result.message;
+                                                                if (result.transcribed_text && result.transcribed_text.trim() !== "") {
+                                                                        console.log(`STT 변환 결과: ${result.transcribed_text}`);
+                                                                        sendChat(result.transcribed_text, true);
+                                                                        recordStatus.textContent = `STT: ${result.transcribed_text}`;
+                                                                        setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
+
+                                                                } else {
+                                                                        const sttErrorMsg = result.message || 'STT 변환 결과가 없습니다.';
+                                                                        console.warn(sttErrorMsg);
+                                                                        recordStatus.textContent = sttErrorMsg;
+                                                                        setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
+                                                                }
+                                                        } else {
+                                                                const errorMsg = `오디오 업로드/변환 오류: ${result.error || response.statusText || '알 수 없는 오류'}`;
+                                                                console.error(errorMsg);
+                                                                recordStatus.textContent = errorMsg;
+                                                                alert(errorMsg);
+                                                                setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
+                                                        }
+                                                } catch (error) {
+                                                        console.error('오디오 업로드 처리 중 알 수 없는 오류 발생:', error);
+                                                        const errorMsg = '오디오 업로드 처리 중 알 수 없는 오류가 발생했습니다.';
+                                                        recordStatus.textContent = errorMsg;
+                                                        alert(errorMsg);
+                                                        setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
+                                                }
+                                                stream.getTracks().forEach(track => track.stop());
+                                        };
+
+                                        mediaRecorder.start();
+                                        isRecording = true;
+                                        recordBtn.innerHTML = '■ 녹음 중지';
+                                        recordBtn.classList.add('recording');
+                                        recordStatus.textContent = '녹음 중...';
+                                        recordStatus.style.display = 'block';
+                                        console.log('녹음 중...');
+
+                                } catch (err) {
+                                        console.error('녹음 시작 오류:', err);
+                                        let alertMsg = '마이크 접근 중 오류가 발생했습니다.';
+                                        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+                                                alertMsg = '마이크 권한이 거부되었습니다. 브라우저 설정을 확인해주세요.';
+                                        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+                                                alertMsg = '사용 가능한 마이크가 없습니다.';
+                                        } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
+                                                alertMsg = '마이크를 사용할 수 없습니다. 다른 앱에서 사용 중인지 확인해주세요.';
+                                        }
+                                        recordStatus.textContent = alertMsg;
+                                        recordStatus.style.display = 'block';
+                                        alert(alertMsg);
+                                }
+                        } else {
+                                if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+                                        mediaRecorder.stop();
+                                }
+                                isRecording = false;
+                                recordBtn.innerHTML = '🎤 녹음 시작';
+                                recordBtn.classList.remove('recording');
+                                console.log('녹음 중지됨.');
+                        }
+                });
+
+                function sendChat(inputText, isFromSTT = false) {
+                        const promptFromBox = promptBox.value.trim();
+                        const finalPrompt = isFromSTT ? inputText : promptFromBox;
+
+                        if (!finalPrompt) return;
+
+                        if (abortController) {
+                                abortController.abort();
+                                console.log("Previous fetch aborted");
+                        }
+                        abortController = new AbortController();
+
+                        if (!isFromSTT) {
+                                promptBox.value = "";
+                        }
+
+                        const userBubble = document.createElement("div");
+                        userBubble.className = "bubble user";
+                        userBubble.textContent = isFromSTT ? "🎤: " + finalPrompt : finalPrompt;
+                        chatBox.appendChild(userBubble);
+                        chatBox.scrollTop = chatBox.scrollHeight;
+
+
+                        const assistantBubble = document.createElement("div");
+                        assistantBubble.className = "bubble assistant";
+                        assistantBubble.innerHTML = "⏳ 생각 중...";
+                        chatBox.appendChild(assistantBubble);
+                        chatBox.scrollTop = chatBox.scrollHeight;
+
+
+                        const copyBtn = document.createElement("button");
+                        copyBtn.className = "copy-button";
+                        copyBtn.innerText = "📋";
+                        copyBtn.title = "복사";
+                        copyBtn.style.display = 'none';
+                        assistantBubble.appendChild(copyBtn);
+
+                        copyBtn.onclick = () => {
+                                const tempDiv = document.createElement("div");
+                                let textToCopy = assistantBubble.dataset.raw || "";
+                                textToCopy = textToCopy.replace(/<tps>.*?<\/tps>/g, "").trim();
+                                tempDiv.innerHTML = marked.parse(textToCopy);
+                                const pureText = tempDiv.textContent || tempDiv.innerText || "";
+
+                                navigator.clipboard.writeText(pureText).then(() => {
+                                        copyBtn.innerText = "✅";
+                                        setTimeout(() => copyBtn.innerText = "📋", 1500);
+                                }).catch(err => {
+                                        console.error('클립보드 복사 실패:', err);
+                                        copyBtn.innerText = "❌";
+                                        setTimeout(() => copyBtn.innerText = "📋", 1500);
+                                });
+                        };
+
+                        let assistantRaw = "";
+                        let tpsText = "";
+                        let firstChunkReceived = false;
+
+                        fetch("/chat", {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ prompt: finalPrompt }),
+                                signal: abortController.signal
+                        })
+                                .then(res => {
+                                        if (!res.ok) {
+                                                return res.text().then(text => {
+                                                        throw new Error(`서버 오류: ${res.status} ${res.statusText} - ${text}`);
+                                                });
+                                        }
+                                        const reader = res.body.getReader();
+                                        const decoder = new TextDecoder("utf-8");
+                                        let buffer = "";
+
+                                        function read() {
+                                                reader.read().then(({ done, value }) => {
+                                                        if (abortController.signal.aborted) {
+                                                                console.log("Fetch aborted during read");
+                                                                if (!assistantRaw && assistantBubble.innerHTML.includes("⏳")) {
+                                                                        assistantBubble.innerHTML = "<span style='color:orange;'>요청이 중단되었습니다.</span>";
+                                                                }
+                                                                return;
+                                                        }
+
+                                                        const chunk = value ? decoder.decode(value, { stream: true }) : "";
+                                                        buffer += chunk;
+
+                                                        let processIndex = 0;
+                                                        while (true) {
+                                                                const tpsStartIndex = buffer.indexOf("<tps>", processIndex);
+                                                                const tpsEndIndex = buffer.indexOf("</tps>", processIndex);
+
+                                                                if (tpsStartIndex !== -1 && tpsEndIndex !== -1 && tpsStartIndex < tpsEndIndex) {
+                                                                        const textPart = buffer.substring(processIndex, tpsStartIndex);
+                                                                        if (textPart) {
+                                                                                assistantRaw += textPart;
+                                                                        }
+                                                                        tpsText = buffer.substring(tpsStartIndex + 5, tpsEndIndex);
+                                                                        processIndex = tpsEndIndex + 6;
+                                                                } else {
+                                                                        if (done) {
+                                                                                const remainingText = buffer.substring(processIndex);
+                                                                                if (remainingText) assistantRaw += remainingText;
+                                                                                buffer = "";
+                                                                        } else {
+                                                                                const remainingText = buffer.substring(processIndex);
+                                                                                assistantRaw += remainingText;
+                                                                                buffer = "";
+                                                                        }
+                                                                        break;
+                                                                }
+                                                        }
+
+                                                        if (assistantRaw && !firstChunkReceived) {
+                                                                firstChunkReceived = true;
+                                                                assistantBubble.innerHTML = '';
+                                                                assistantBubble.appendChild(copyBtn);
+                                                                copyBtn.style.display = 'inline-block';
+                                                        }
+
+                                                        if (assistantRaw) {
+                                                                assistantBubble.dataset.raw = assistantRaw + (tpsText ? `<tps>${tpsText}</tps>` : "");
+                                                                const html = marked.parse(assistantRaw.trim() === "⏳ 생각 중..." ? "" : assistantRaw);
+
+                                                                const currentTPSDiv = assistantBubble.querySelector(".tps");
+                                                                assistantBubble.innerHTML = html;
+                                                                assistantBubble.appendChild(copyBtn);
+                                                                if (currentTPSDiv) assistantBubble.appendChild(currentTPSDiv);
+                                                        }
+
+
+                                                        if (tpsText) {
+                                                                let tpsSpan = assistantBubble.querySelector(".tps");
+                                                                if (!tpsSpan) {
+                                                                        tpsSpan = document.createElement("div");
+                                                                        tpsSpan.className = "tps";
+                                                                        assistantBubble.appendChild(tpsSpan);
+                                                                }
+                                                                tpsSpan.innerText = `⚡ ${tpsText} tokens/sec`;
+                                                        }
+
+                                                        chatBox.scrollTop = chatBox.scrollHeight;
+
+                                                        if (done) {
+                                                                if (!assistantRaw && !firstChunkReceived) {
+                                                                        assistantBubble.innerHTML = "<span style='color:grey;'>응답이 없습니다.</span>";
+                                                                        copyBtn.style.display = 'none';
+                                                                } else if (!assistantRaw && firstChunkReceived) {
+                                                                }
+                                                                return;
+                                                        }
+                                                        if (!abortController.signal.aborted) read();
+                                                }).catch(err => {
+                                                        if (err.name === 'AbortError' || (abortController && abortController.signal.aborted)) {
+                                                                console.log('Fetch read aborted.');
+                                                                if (!assistantRaw && assistantBubble.innerHTML.includes("⏳")) {
+                                                                        assistantBubble.innerHTML = "<span style='color:orange;'>요청이 중단되었습니다.</span>";
+                                                                        copyBtn.style.display = 'none';
+                                                                }
+                                                        } else {
+                                                                console.error("스트림 읽기 오류:", err);
+                                                                assistantBubble.innerHTML = `<br><span style='color:red;'>응답 스트리밍 중 오류: ${err.message}</span>`;
+                                                                copyBtn.style.display = 'none';
+                                                        }
+                                                });
+                                        }
+                                        read();
+                                })
+                                .catch(err => {
+                                        if (err.name === 'AbortError' || (abortController && abortController.signal.aborted)) {
+                                                console.log('Fetch request aborted.');
+                                                if (assistantBubble.innerHTML.includes("⏳")) {
+                                                        assistantBubble.innerHTML = "<span style='color:orange;'>요청이 중단되었습니다.</span>";
+                                                        copyBtn.style.display = 'none';
+                                                }
+                                        } else {
+                                                console.error("Fetch 오류:", err);
+                                                assistantBubble.innerHTML = `<span style='color:red;'>서버 통신 오류: ${err.message}</span>`;
+                                                copyBtn.style.display = 'none';
+                                        }
+                                        chatBox.scrollTop = chatBox.scrollHeight;
+                                });
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                }
+        </script>
+</body>
+
+</html>

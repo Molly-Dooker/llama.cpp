@@ -20,7 +20,7 @@
 *.so
 *.swp
 *.tmp
-
+*.mp3
 # IDE / OS
 
 .cache/
