@@ -145,7 +145,7 @@ def upload_audio():
                 "transcribed_text": None
             }), 200 # 파일 저장은 성공했으므로 200, 클라이언트에서 transcribed_text 유무로 처리
         
-        if transcribed_text is not None and transcribed_text is not '':
+        if transcribed_text != None and transcribed_text != '':
             print(f"INFO: 오디오 STT 변환 결과: {transcribed_text}")
             return jsonify({
                 "message": f"'{target_filename}'에 오디오가 저장 및 STT 변환되었습니다.",

@@ -76,6 +76,23 @@
                         /* pre 태그 내용이 길면 가로 스크롤 */
                 }
 
+                /* 추가: 시스템 메시지 스타일 */
+                .system-message {
+                        align-self: center;
+                        /* 중앙 또는 flex-start로 정렬 */
+                        background: #f8f9fa;
+                        /* 밝은 회색 배경 */
+                        color: #dc3545;
+                        /* 빨간색 계열의 텍스트 (오류/경고) */
+                        border: 1px solid #e9ecef;
+                        padding: 8px 12px;
+                        border-radius: 10px;
+                        font-size: 0.9em;
+                        font-style: italic;
+                        text-align: center;
+                        max-width: 80%;
+                }
+
 
                 .tps {
                         font-size: 0.8em;
@@ -257,6 +274,16 @@
                         }
                 });
 
+                // --- 새 함수: 시스템 메시지 UI에 추가 ---
+                function appendSystemMessage(message) {
+                        const systemBubble = document.createElement("div");
+                        systemBubble.className = "bubble system-message"; // CSS 스타일 적용 위함
+                        systemBubble.textContent = message;
+                        chatBox.appendChild(systemBubble);
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                }
+                // --- ---
+
                 recordBtn.addEventListener('click', async () => {
                         if (!isRecording) {
                                 try {
@@ -302,33 +329,42 @@
                                                         const result = await response.json();
 
                                                         if (response.ok && result.file_saved) {
-                                                                console.log(`서버 메시지: ${result.message}`);
-                                                                recordStatus.textContent = result.message;
+                                                                console.log(`서버 메시지 (upload_audio): ${result.message}`);
+                                                                // result.transcribed_text 가 null, undefined, 또는 빈 문자열인지 확인
                                                                 if (result.transcribed_text && result.transcribed_text.trim() !== "") {
                                                                         console.log(`STT 변환 결과: ${result.transcribed_text}`);
-                                                                        sendChat(result.transcribed_text, true);
-                                                                        recordStatus.textContent = `STT: ${result.transcribed_text}`;
-                                                                        setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
-
+                                                                        recordStatus.textContent = `STT: ${result.transcribed_text}`; // 상태 메시지 업데이트
+                                                                        sendChat(result.transcribed_text, true); // 채팅 전송
                                                                 } else {
-                                                                        const sttErrorMsg = result.message || 'STT 변환 결과가 없습니다.';
-                                                                        console.warn(sttErrorMsg);
-                                                                        recordStatus.textContent = sttErrorMsg;
-                                                                        setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
+                                                                        // --- STT 결과가 없거나 비어있는 경우 ---
+                                                                        const customMessage = "Recording failed. Please try again.";
+                                                                        console.warn(customMessage + ` (서버 상세: ${result.message || 'STT 결과 없음'})`);
+                                                                        recordStatus.textContent = customMessage; // 상태 메시지 업데이트
+                                                                        appendSystemMessage(customMessage); // 채팅 UI에 시스템 메시지로 표시
+                                                                        // --- ---
                                                                 }
                                                         } else {
                                                                 const errorMsg = `오디오 업로드/변환 오류: ${result.error || response.statusText || '알 수 없는 오류'}`;
                                                                 console.error(errorMsg);
                                                                 recordStatus.textContent = errorMsg;
-                                                                alert(errorMsg);
-                                                                setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
+                                                                // alert(errorMsg); // 필요에 따라 alert 유지
+                                                                appendSystemMessage(errorMsg); // 채팅 UI에도 오류 표시
                                                         }
                                                 } catch (error) {
                                                         console.error('오디오 업로드 처리 중 알 수 없는 오류 발생:', error);
                                                         const errorMsg = '오디오 업로드 처리 중 알 수 없는 오류가 발생했습니다.';
                                                         recordStatus.textContent = errorMsg;
-                                                        alert(errorMsg);
-                                                        setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
+                                                        // alert(errorMsg);
+                                                        appendSystemMessage(errorMsg); // 채팅 UI에도 오류 표시
+                                                } finally {
+                                                        // recordStatus 메시지를 일정 시간 후 숨김 (성공/실패/STT없음 모든 경우)
+                                                        if (recordStatus.textContent.trim() !== '') {
+                                                                recordStatus.style.display = 'block'; // 확실히 보이게
+                                                                setTimeout(() => {
+                                                                        recordStatus.style.display = 'none';
+                                                                        recordStatus.textContent = '';
+                                                                }, 5000);
+                                                        }
                                                 }
                                                 stream.getTracks().forEach(track => track.stop());
                                         };
@@ -353,7 +389,9 @@
                                         }
                                         recordStatus.textContent = alertMsg;
                                         recordStatus.style.display = 'block';
-                                        alert(alertMsg);
+                                        // alert(alertMsg); // 필요에 따라 alert 대신 appendSystemMessage 사용 가능
+                                        appendSystemMessage(alertMsg); // 채팅 UI에도 오류 표시
+                                        setTimeout(() => { recordStatus.style.display = 'none'; recordStatus.textContent = ''; }, 5000);
                                 }
                         } else {
                                 if (mediaRecorder && mediaRecorder.state !== 'inactive') {
@@ -363,6 +401,7 @@
                                 recordBtn.innerHTML = '🎤 녹음 시작';
                                 recordBtn.classList.remove('recording');
                                 console.log('녹음 중지됨.');
+                                // 녹음 중지 시에는 recordStatus를 즉시 업데이트하지 않고, onstop 핸들러에서 처리하도록 둠
                         }
                 });
 
@@ -481,8 +520,8 @@
 
                                                         if (assistantRaw && !firstChunkReceived) {
                                                                 firstChunkReceived = true;
-                                                                assistantBubble.innerHTML = '';
-                                                                assistantBubble.appendChild(copyBtn);
+                                                                assistantBubble.innerHTML = ''; // Clear "생각 중..."
+                                                                assistantBubble.appendChild(copyBtn); // Re-append copy button
                                                                 copyBtn.style.display = 'inline-block';
                                                         }
 
@@ -491,8 +530,16 @@
                                                                 const html = marked.parse(assistantRaw.trim() === "⏳ 생각 중..." ? "" : assistantRaw);
 
                                                                 const currentTPSDiv = assistantBubble.querySelector(".tps");
-                                                                assistantBubble.innerHTML = html;
-                                                                assistantBubble.appendChild(copyBtn);
+                                                                // Ensure copy button is not part of innerHTML to avoid duplication issues
+                                                                const copyButtonRef = assistantBubble.querySelector(".copy-button");
+
+
+                                                                assistantBubble.innerHTML = html; // This overwrites everything
+
+                                                                if (copyButtonRef) assistantBubble.appendChild(copyButtonRef); // Add it back
+                                                                else assistantBubble.appendChild(copyBtn); // Or the original one if it wasn't found (shouldn't happen if logic is correct)
+
+
                                                                 if (currentTPSDiv) assistantBubble.appendChild(currentTPSDiv);
                                                         }
 
@@ -510,10 +557,11 @@
                                                         chatBox.scrollTop = chatBox.scrollHeight;
 
                                                         if (done) {
-                                                                if (!assistantRaw && !firstChunkReceived) {
+                                                                if (!assistantRaw && !firstChunkReceived) { // No response at all
                                                                         assistantBubble.innerHTML = "<span style='color:grey;'>응답이 없습니다.</span>";
                                                                         copyBtn.style.display = 'none';
-                                                                } else if (!assistantRaw && firstChunkReceived) {
+                                                                } else if (firstChunkReceived && assistantRaw.trim() === "") { // Received something, but it ended up empty (e.g. only "User: ... Bot: ")
+                                                                        // Potentially show "응답 완료" or similar, or just leave as is.
                                                                 }
                                                                 return;
                                                         }
