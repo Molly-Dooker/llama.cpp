@@ -136,7 +136,7 @@ def upload_audio():
         print(f"INFO: 오디오 파일이 '{target_filename}'으로 저장되었습니다.")
 
         # STT 변환 시도
-        transcribed_text, transcription_error = transcribe_audio_aai('target_filename')
+        transcribed_text, transcription_error = transcribe_audio_aai(target_filename)
         if transcription_error:
             print(f"ERROR_TRANSCRIPTION: {transcription_error}")
             return jsonify({
