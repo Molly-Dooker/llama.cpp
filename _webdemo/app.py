@@ -6,11 +6,32 @@ import os
 from pydub import AudioSegment
 import pydub.exceptions # pydub 예외를 명시적으로 임포트
 import tempfile # 임시 파일 생성을 위해 임포트
-
+import assemblyai as aai
+import openai
 app = Flask(__name__)
 LLAMA_SERVER_URL = "http://localhost:8080/v1/chat/completions"
-import assemblyai as aai
-aai.settings.api_key = "eb7798f0e37d414a8435b42c17a20b58"
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+aai.settings.api_key = os.getenv("AAI_API_KEY")
+
+
+def transcribe_audio_openai(audio_file_path):
+    if not OPENAI_API_KEY:
+        return None, "OpenAI API 키가 설정되지 않았습니다."
+    try:
+        client = openai.OpenAI(api_key=OPENAI_API_KEY) # 함수 호출 시 클라이언트 초기화
+        with open(audio_file_path, "rb") as audio_file:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file
+            )
+        return transcription.text, None
+    except openai.APIError as e:
+        print(f"OpenAI API 오류: {e}")
+        return None, f"OpenAI API 오류: {str(e)}"
+    except Exception as e:
+        print(f"STT 변환 중 일반 오류 발생: {e}")
+        return None, f"STT 변환 중 오류 발생: {str(e)}"
 
 def transcribe_audio_aai(audio_file_path):    
     config = aai.TranscriptionConfig(speech_model=aai.SpeechModel.best)
@@ -136,7 +157,7 @@ def upload_audio():
         print(f"INFO: 오디오 파일이 '{target_filename}'으로 저장되었습니다.")
 
         # STT 변환 시도
-        transcribed_text, transcription_error = transcribe_audio_aai(target_filename)
+        transcribed_text, transcription_error = transcribe_audio_openai(target_filename)
         if transcription_error:
             print(f"ERROR_TRANSCRIPTION: {transcription_error}")
             return jsonify({
