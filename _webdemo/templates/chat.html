@@ -6,7 +6,7 @@
         <title>BOS LLM DEMO</title>
         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
         <style>
-                /* ... 이전과 동일한 스타일 ... */
+                /* ... (기존 스타일은 동일) ... */
                 body {
                         font-family: sans-serif;
                         background: #f0f2f5;
@@ -74,21 +74,21 @@
 
                 .system-message { /* 채팅창 내 시스템 메시지 스타일 */
                         align-self: center;
-                        background: #f8f9fa; 
-                        color: #495057; 
-                        border: 1px solid #dee2e6; 
+                        background: #f8f9fa;
+                        color: #495057;
+                        border: 1px solid #dee2e6;
                         padding: 8px 12px;
                         border-radius: 10px;
-                        font-size: 0.85em; 
+                        font-size: 0.85em;
                         text-align: center;
                         max-width: 80%;
                         margin-top: 5px;
                         margin-bottom: 5px;
                 }
-                .system-message.error { 
-                    color: #dc3545; 
-                    border-color: #f5c6cb; 
-                    background-color: #f8d7da; 
+                .system-message.error {
+                    color: #dc3545;
+                    border-color: #f5c6cb;
+                    background-color: #f8d7da;
                 }
 
 
@@ -108,21 +108,33 @@
                         color: #666;
                         cursor: pointer;
                         padding: 3px;
-                        z-index: 1;
+                        z-index: 1; /* Ensure copy button is clickable */
                 }
 
                 .copy-button:hover {
                         color: #333;
                 }
-                .tts-speaker-icon { 
+                .tts-speaker-icon {
                     font-size: 0.9em;
-                    margin-left: 8px;
+                    margin-left: 8px; /* Default margin */
                     cursor: pointer;
-                    display: inline-block; 
+                    display: inline-block;
+                    padding: 3px; /* Add some padding for easier clicking */
+                    z-index: 2; /* Ensure speaker is above other elements if overlapping */
                 }
                 .tts-speaker-icon:hover {
                     opacity: 0.7;
                 }
+
+                /* Adjust margin if it's the first interactive element */
+                .assistant > .tts-speaker-icon:first-child {
+                    margin-left: 0;
+                }
+                 /* Adjust margin if it's next to a copy button (which is absolute) */
+                .copy-button + .tts-speaker-icon {
+                    margin-left: 0; /* Remove margin if it follows an absolutely positioned copy button */
+                }
+
 
                 pre {
                         background: #333;
@@ -202,29 +214,29 @@
                 }
 
                 #recordStatus { /* 하단 로그 표시 영역 */
-                        display: none; 
+                        display: none;
                         text-align: center;
                         font-size: 0.9em;
-                        color: #555; 
+                        color: #555;
                         margin-top: 5px;
                         padding: 5px 8px;
-                        background-color: #f0f0f0; 
+                        background-color: #f0f0f0;
                         border-radius: 4px;
                         border: 1px solid #ddd;
                 }
-                #recordStatus.error { 
-                        color: #D8000C; 
-                        background-color: #FFD2D2; 
+                #recordStatus.error {
+                        color: #D8000C;
+                        background-color: #FFD2D2;
                         border-color: #D8000C;
                 }
-                #recordStatus.success { 
-                        color: #270; 
-                        background-color: #DFF2BF; 
-                        border-color: #4F8A10; 
+                #recordStatus.success {
+                        color: #270;
+                        background-color: #DFF2BF;
+                        border-color: #4F8A10;
                 }
-                #recordStatus.info { 
-                        color: #00529B; 
-                        background-color: #BDE5F8; 
+                #recordStatus.info {
+                        color: #00529B;
+                        background-color: #BDE5F8;
                         border-color: #00529B;
                 }
         </style>
@@ -258,25 +270,25 @@
                 let mediaRecorder;
                 let audioChunks = [];
                 let isRecording = false;
-                let sttStatusIntervalId = null; // STT용 타이머 ID (recordStatusIntervalId -> sttStatusIntervalId로 변경)
-                let ttsStatusIntervalId = null; // TTS용 타이머 ID 추가
-                let recordStatusTimeoutId = null; 
-                let activeTTSPlayers = []; 
+                let sttStatusIntervalId = null;
+                let ttsStatusIntervalId = null;
+                let recordStatusTimeoutId = null;
+                let activeTTSPlayers = []; // Stores { audio, url, bubble, speakerIcon, isPlaying, urlRevoked }
 
                 function updateRecordStatus(message, type = 'info', persist = false) {
                     if (recordStatusTimeoutId) {
-                        clearTimeout(recordStatusTimeoutId); 
+                        clearTimeout(recordStatusTimeoutId);
                     }
                     recordStatus.textContent = message;
-                    recordStatus.className = type; 
+                    recordStatus.className = type;
                     recordStatus.style.display = 'block';
 
-                    if (!persist) { 
+                    if (!persist) {
                         recordStatusTimeoutId = setTimeout(() => {
                             recordStatus.style.display = 'none';
                             recordStatus.textContent = '';
-                            recordStatus.className = ''; 
-                        }, 5000); 
+                            recordStatus.className = '';
+                        }, 5000);
                     }
                 }
 
@@ -311,27 +323,33 @@
                             if (playerData.audio) {
                                 playerData.audio.pause();
                                 playerData.audio.currentTime = 0;
-                                if (playerData.url) { 
+                                if (playerData.url && !playerData.urlRevoked) {
                                     URL.revokeObjectURL(playerData.url);
+                                    playerData.urlRevoked = true;
                                 }
                             }
+                            if (playerData.speakerIcon) {
+                                 playerData.speakerIcon.innerHTML = "🔊";
+                                 playerData.speakerIcon.title = "소리 재생";
+                            }
+                            playerData.isPlaying = false;
                         });
-                        activeTTSPlayers = []; 
-                        console.log("모든 TTS 오디오 정지 및 초기화됨.");
+                        activeTTSPlayers = [];
+                        console.log("모든 TTS 오디오 정지, URL 해제 및 아이콘 초기화됨.");
 
 
-                        if (sttStatusIntervalId) { // STT 타이머 정리
+                        if (sttStatusIntervalId) {
                                 clearInterval(sttStatusIntervalId);
                                 sttStatusIntervalId = null;
                         }
-                        if (ttsStatusIntervalId) { // TTS 타이머 정리
+                        if (ttsStatusIntervalId) {
                                 clearInterval(ttsStatusIntervalId);
                                 ttsStatusIntervalId = null;
                         }
-                        if (recordStatusTimeoutId) { 
+                        if (recordStatusTimeoutId) {
                             clearTimeout(recordStatusTimeoutId);
                         }
-                        recordStatus.textContent = ''; 
+                        recordStatus.textContent = '';
                         recordStatus.style.display = 'none';
                         recordStatus.className = '';
                 });
@@ -348,6 +366,18 @@
                         setTimeout(() => { chatBox.scrollTop = chatBox.scrollHeight; }, 100);
                 }
                 
+                function updateSpeakerState(pData, playing) {
+                    if (!pData) return;
+                    pData.isPlaying = playing;
+                    if (pData.speakerIcon) {
+                        pData.speakerIcon.innerHTML = playing ? "⏹️" : "🔊";
+                        pData.speakerIcon.title = playing ? "재생 중지" : "소리 재생";
+                    }
+                }
+
+                // Removed cleanupAudioPlayerOnEndOrError as its logic is now simpler and handled directly
+                // in onended/onerror, or by updateSpeakerState.
+
                 function playTTSSound(text, bubbleElement) {
                     console.log("Requesting TTS for:", text);
                     if (!text || text.trim() === "") {
@@ -355,59 +385,62 @@
                         return;
                     }
 
-                    if (ttsStatusIntervalId) { // 이전 TTS 타이머가 있다면 정리
+                    if (ttsStatusIntervalId) {
                         clearInterval(ttsStatusIntervalId);
                         ttsStatusIntervalId = null;
                     }
 
                     let startTime = Date.now();
-                    updateRecordStatus("음성 변환(TTS) 진행 중... (0초)", 'info', true); 
+                    updateRecordStatus("음성 변환(TTS) 진행 중... (0초)", 'info', true);
                     console.log('음성 변환(TTS) 시작...');
 
                     ttsStatusIntervalId = setInterval(() => {
                         const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
-                        // recordStatus가 현재 TTS 타이머 메시지를 표시 중일 때만 업데이트
                         if (recordStatus.style.display === 'block' && recordStatus.textContent.startsWith("음성 변환(TTS) 진행 중")) {
                              recordStatus.textContent = `음성 변환(TTS) 진행 중... (${elapsedTime}초)`;
-                        } else { // 다른 메시지로 덮어쓰여졌다면 타이머 중지
+                        } else {
                             clearInterval(ttsStatusIntervalId);
                             ttsStatusIntervalId = null;
                         }
                     }, 1000);
-
-
+                    
                     fetch("/synthesize_speech", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ text: text, voice: "nova" }) 
+                        body: JSON.stringify({ text: text, voice: "nova" })
                     })
                     .then(response => {
-                        if (ttsStatusIntervalId) { // 응답 받으면 타이머 중지
+                        if (ttsStatusIntervalId) {
                             clearInterval(ttsStatusIntervalId);
                             ttsStatusIntervalId = null;
                         }
                         if (!response.ok) {
-                            return response.json().then(errData => { 
+                            return response.json().then(errData => {
                                 throw new Error(`${errData.error || response.statusText}`);
-                            }).catch(() => { 
+                            }).catch(() => {
                                 throw new Error(`${response.statusText}`);
                             });
                         }
                         return response.blob();
                     })
                     .then(audioBlob => {
-                        updateRecordStatus("음성 데이터 수신 완료. 재생 준비...", 'info'); 
+                        updateRecordStatus("음성 데이터 수신 완료. 재생 준비...", 'info');
                         const audioUrl = URL.createObjectURL(audioBlob);
                         const audio = new Audio(audioUrl); 
                         
-                        const playerData = { audio: audio, url: audioUrl, bubble: bubbleElement };
-                        activeTTSPlayers.push(playerData);
+                        const playerData = {
+                            audio: audio,
+                            url: audioUrl,
+                            bubble: bubbleElement,
+                            speakerIcon: null, 
+                            isPlaying: false,
+                            urlRevoked: false
+                        };
 
                         let speakerIcon = bubbleElement.querySelector('.tts-speaker-icon');
                         if (!speakerIcon) {
                             speakerIcon = document.createElement("span");
                             speakerIcon.className = 'tts-speaker-icon';
-                            speakerIcon.innerHTML = "🔊"; 
                             
                             const tpsDiv = bubbleElement.querySelector('.tps');
                             const copyBtnInBubble = bubbleElement.querySelector('.copy-button');
@@ -417,60 +450,88 @@
                             } else if (copyBtnInBubble) {
                                 copyBtnInBubble.parentNode.insertBefore(speakerIcon, copyBtnInBubble);
                             } else {
-                                bubbleElement.appendChild(speakerIcon); 
+                                bubbleElement.appendChild(speakerIcon);
                             }
                         }
-                        speakerIcon.onclick = (e) => {
-                            e.stopPropagation(); 
-                            audio.currentTime = 0;
-                            updateRecordStatus("음성 수동 재생 중...", 'info');
-                            audio.play().catch(e_play => {
-                                console.error("TTS 수동 재생 오류:", e_play);
-                                updateRecordStatus("음성 수동 재생 실패!", 'error');
-                            });
-                        };
-                        
-                        audio.play().then(() => {
-                            console.log("TTS 오디오 자동 재생 시작됨.");
-                            updateRecordStatus("음성 재생 중...", 'info', true); 
-                        }).catch(e_play => {
-                            console.warn("TTS 오디오 자동 재생 실패:", e_play);
-                            updateRecordStatus("음성 자동 재생 실패. 🔊 아이콘 클릭!", 'info', true); 
-                            appendSystemMessage("음성 자동 재생에 실패했습니다. 🔊 아이콘을 클릭하여 재생하세요.");
-                        });
+                        playerData.speakerIcon = speakerIcon;
+                        updateSpeakerState(playerData, false); 
 
-                        const onAudioEndOrError = () => {
-                            const index = activeTTSPlayers.findIndex(p => p.audio === audio);
-                            if (index > -1) {
-                                activeTTSPlayers.splice(index, 1);
-                                console.log("TTS 오디오 active list 에서 제거됨");
+                        speakerIcon.onclick = (e) => {
+                            e.stopPropagation();
+                            const pData = activeTTSPlayers.find(p => p.audio === audio);
+
+                            if (!pData) {
+                                console.log("Audio player data not found. This might happen after a full chat reset. Icon reset to default.");
+                                e.target.innerHTML = "🔊"; 
+                                e.target.title = "소리 재생";
+                                return;
+                            }
+
+                            if (pData.isPlaying) { 
+                                pData.audio.pause();
+                                pData.audio.currentTime = 0;
+                                updateRecordStatus("재생 중지됨.", 'info');
+                                updateSpeakerState(pData, false); 
+                            } else { 
+                                pData.audio.currentTime = 0; 
+                                pData.audio.play().then(() => {
+                                    updateSpeakerState(pData, true); 
+                                    updateRecordStatus("음성 수동 재생 중...", 'info', true);
+                                }).catch(e_play => {
+                                    console.error("TTS 수동 재생 오류:", e_play);
+                                    updateRecordStatus("음성 수동 재생 실패!", 'error');
+                                    updateSpeakerState(pData, false); 
+                                });
                             }
                         };
+                        
+                        activeTTSPlayers.push(playerData);
 
+                        audio.play().then(() => {
+                            console.log("TTS 오디오 자동 재생 시작됨.");
+                            updateSpeakerState(playerData, true); 
+                            updateRecordStatus("음성 재생 중...", 'info', true);
+                        }).catch(e_play => {
+                            console.warn("TTS 오디오 자동 재생 실패:", e_play);
+                            updateRecordStatus("음성 자동 재생 실패. 🔊 아이콘 클릭!", 'info', true);
+                            appendSystemMessage("음성 자동 재생에 실패했습니다. 🔊 아이콘을 클릭하여 재생하세요.");
+                            updateSpeakerState(playerData, false); 
+                        });
+
+                        // MODIFICATION: onended and onerror handlers
                         audio.onended = () => {
                             console.log("TTS 오디오 재생 완료.");
-                            updateRecordStatus("음성 재생 완료.", 'success'); 
-                            onAudioEndOrError();
+                            updateRecordStatus("음성 재생 완료.", 'success');
+                            const pData = activeTTSPlayers.find(p => p.audio === audio);
+                            if (pData) {
+                                updateSpeakerState(pData, false); // Reset state, keep in list for replay
+                            }
                         };
                         audio.onerror = (e_audio_err) => {
                             console.error("Audio element error:", e_audio_err);
                             updateRecordStatus("음성 재생 중 오류 발생.", 'error');
-                            onAudioEndOrError();
+                            const pData = activeTTSPlayers.find(p => p.audio === audio);
+                            if (pData) {
+                                updateSpeakerState(pData, false); // Reset state, keep in list for replay (unless error is fatal)
+                                // Optionally, to prevent replay on persistent errors, you could remove it:
+                                // activeTTSPlayers.splice(activeTTSPlayers.indexOf(pData), 1);
+                                // console.log("오류로 인해 플레이어가 활성 목록에서 제거되었습니다.");
+                            }
                         };
+                        // END OF MODIFICATION
                     })
                     .catch(error => {
-                        if (ttsStatusIntervalId) { // 에러 발생 시에도 타이머 중지
+                        if (ttsStatusIntervalId) {
                             clearInterval(ttsStatusIntervalId);
                             ttsStatusIntervalId = null;
                         }
                         console.error("TTS 요청 또는 처리 오류:", error);
                         updateRecordStatus(`음성 변환(TTS) 실패: ${error.message}`, 'error');
                         let speakerIcon = bubbleElement.querySelector('.tts-speaker-icon');
-                        if (speakerIcon) speakerIcon.innerHTML = "🔇"; 
+                        if (speakerIcon) speakerIcon.innerHTML = "🔇";
                     });
                 }
-
-
+                // ... (recordBtn and sendChat functions from your provided script) ...
                 recordBtn.addEventListener('click', async () => {
                         if (!isRecording) {
                                 try {
@@ -495,16 +556,16 @@
 
                                         mediaRecorder.onstop = async () => {
                                                 const currentStreamTracks = mediaRecorder.stream.getTracks();
-                                                if (sttStatusIntervalId) { // STT 타이머 정리
+                                                if (sttStatusIntervalId) {
                                                         clearInterval(sttStatusIntervalId);
                                                         sttStatusIntervalId = null;
                                                 }
 
-                                                if (audioChunks.length === 0) { 
+                                                if (audioChunks.length === 0) {
                                                     console.log('No audio data recorded or recording was reset.');
                                                     updateRecordStatus('녹음된 데이터가 없거나 취소되었습니다.', 'error');
                                                     currentStreamTracks.forEach(track => track.stop());
-                                                    if (isRecording) { 
+                                                    if (isRecording) {
                                                         isRecording = false;
                                                         recordBtn.innerHTML = '🎤 녹음 시작';
                                                         recordBtn.classList.remove('recording');
@@ -514,19 +575,20 @@
 
                                                 const blobMimeType = mediaRecorder.mimeType || (options.mimeType || 'audio/webm');
                                                 const audioBlob = new Blob(audioChunks, { type: blobMimeType });
-                                                audioChunks = [];
+                                                audioChunks = []; // Clear chunks for next recording
                                                 const formData = new FormData();
                                                 let recordingFilename = 'recording';
                                                 if (blobMimeType.includes('webm')) recordingFilename += '.webm';
                                                 else if (blobMimeType.includes('ogg')) recordingFilename += '.ogg';
+                                                else recordingFilename += '.bin'; // Fallback extension
 
                                                 formData.append('audio_data', audioBlob, recordingFilename);
 
                                                 let startTime = Date.now();
-                                                updateRecordStatus('오디오 업로드 및 STT 변환 중... (0초)', 'info', true); 
+                                                updateRecordStatus('오디오 업로드 및 STT 변환 중... (0초)', 'info', true);
                                                 console.log('오디오 업로드 및 STT 변환 시작...');
 
-                                                sttStatusIntervalId = setInterval(() => { // STT 타이머 ID 사용
+                                                sttStatusIntervalId = setInterval(() => {
                                                         const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
                                                         if (recordStatus.style.display === 'block' && recordStatus.textContent.startsWith("오디오 업로드 및 STT 변환 중")) {
                                                             recordStatus.textContent = `오디오 업로드 및 STT 변환 중... (${elapsedTime}초)`;
@@ -541,7 +603,7 @@
                                                                 method: 'POST',
                                                                 body: formData
                                                         });
-                                                        clearInterval(sttStatusIntervalId); 
+                                                        clearInterval(sttStatusIntervalId);
                                                         sttStatusIntervalId = null;
                                                         const result = await response.json();
 
@@ -550,7 +612,7 @@
                                                                 if (result.transcribed_text && result.transcribed_text.trim() !== "") {
                                                                         console.log(`STT 변환 결과: ${result.transcribed_text}`);
                                                                         updateRecordStatus(`음성인식 결과: ${result.transcribed_text}`, 'success');
-                                                                        sendChat(result.transcribed_text, true);
+                                                                        sendChat(result.transcribed_text, true); // Send STT result to chat
                                                                 } else {
                                                                         const customMessage = "음성인식에 실패했거나 음성이 감지되지 않았습니다.";
                                                                         console.warn(customMessage + ` (서버 상세: ${result.message || 'STT 결과 없음'})`);
@@ -562,7 +624,7 @@
                                                                 updateRecordStatus(errorMsg, 'error');
                                                         }
                                                 } catch (error) {
-                                                        if (sttStatusIntervalId) { 
+                                                        if (sttStatusIntervalId) {
                                                                 clearInterval(sttStatusIntervalId);
                                                                 sttStatusIntervalId = null;
                                                         }
@@ -570,19 +632,19 @@
                                                         const errorMsg = '오디오 업로드 처리 중 알 수 없는 오류가 발생했습니다.';
                                                         updateRecordStatus(errorMsg, 'error');
                                                 } finally {
-                                                        if (sttStatusIntervalId) { 
+                                                        if (sttStatusIntervalId) {
                                                                 clearInterval(sttStatusIntervalId);
                                                                 sttStatusIntervalId = null;
                                                         }
-                                                        currentStreamTracks.forEach(track => track.stop());
+                                                        currentStreamTracks.forEach(track => track.stop()); // Stop microphone tracks
                                                 }
-                                        }; 
+                                        };
 
                                         mediaRecorder.start();
                                         isRecording = true;
                                         recordBtn.innerHTML = '■ 녹음 중지';
                                         recordBtn.classList.add('recording');
-                                        updateRecordStatus('녹음 시작됨...', 'info'); 
+                                        updateRecordStatus('녹음 시작됨...', 'info');
                                         console.log('녹음 시작됨...');
 
                                 } catch (err) {
@@ -595,25 +657,20 @@
                                         } else if (err.name === "NotReadableError" || err.name === "TrackStartError") {
                                                 userFriendlyMessage = '마이크를 사용할 수 없습니다. 다른 앱에서 사용 중인지 확인해주세요.';
                                         }
-                                        updateRecordStatus(userFriendlyMessage, 'error'); 
+                                        updateRecordStatus(userFriendlyMessage, 'error');
                                 }
-                        } else {
+                        } else { // Stop recording
                                 if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                                        mediaRecorder.stop();
+                                        mediaRecorder.stop(); // This will trigger mediaRecorder.onstop
                                 }
-                                isRecording = false; 
+                                isRecording = false;
                                 recordBtn.innerHTML = '🎤 녹음 시작';
                                 recordBtn.classList.remove('recording');
-                                if (sttStatusIntervalId) { 
-                                    clearInterval(sttStatusIntervalId);
-                                    sttStatusIntervalId = null;
-                                }
-                                updateRecordStatus('녹음 중지됨.', 'info'); 
+                                updateRecordStatus('녹음 중지됨.', 'info');
                                 console.log('녹음 중지 요청됨.');
                         }
                 });
 
-                // sendChat 함수는 이전과 동일
                 function sendChat(inputText, isFromSTT = false) {
                         const promptFromBox = promptBox.value.trim();
                         const finalPrompt = isFromSTT ? inputText : promptFromBox;
@@ -648,13 +705,13 @@
                         copyBtn.className = "copy-button";
                         copyBtn.innerText = "📋";
                         copyBtn.title = "복사";
-                        copyBtn.style.display = 'none';
+                        copyBtn.style.display = 'none'; 
 
                         copyBtn.onclick = (e) => {
                                 e.stopPropagation();
                                 const tempDiv = document.createElement("div");
                                 let textToCopy = assistantBubble.dataset.rawFullText || "";
-                                tempDiv.innerHTML = marked.parse(textToCopy);
+                                tempDiv.innerHTML = marked.parse(textToCopy); 
                                 const pureText = tempDiv.textContent || tempDiv.innerText || "";
 
                                 navigator.clipboard.writeText(pureText).then(() => {
@@ -668,7 +725,7 @@
                         };
 
                         let assistantRawAccumulated = ""; 
-                        let assistantRawForTTS = ""; 
+                        let assistantRawForTTS = "";      
                         let tpsText = "";
                         let firstChunkReceived = false;
 
@@ -680,7 +737,7 @@
                         })
                                 .then(res => {
                                         if (!res.ok) {
-                                                return res.text().then(text => {
+                                                return res.text().then(text => { 
                                                         throw new Error(`서버 오류: ${res.status} ${res.statusText} - ${text}`);
                                                 });
                                         }
@@ -694,6 +751,7 @@
                                                                 console.log("Fetch aborted during read");
                                                                 if (!firstChunkReceived && assistantBubble.innerHTML.includes("⏳")) {
                                                                         assistantBubble.innerHTML = "<span style='color:orange;'>요청이 중단되었습니다.</span>";
+                                                                        copyBtn.style.display = 'none';
                                                                 }
                                                                 return;
                                                         }
@@ -702,7 +760,7 @@
                                                         buffer += chunk;
 
                                                         let currentTextChunkOnly = ""; 
-                                                        let tpsFoundInChunk = false; 
+                                                        let tpsFoundInChunk = false;
 
                                                         let lastProcessedIndex = 0;
                                                         while (true) {
@@ -727,66 +785,88 @@
                                                                 buffer = buffer.substring(tpsOpenIndex); 
                                                                 break;
                                                             }
-
                                                             tpsText = buffer.substring(tpsOpenIndex + 5, tpsCloseIndex);
                                                             assistantRawAccumulated += `<tps>${tpsText}</tps>`; 
                                                             tpsFoundInChunk = true;
-                                                            lastProcessedIndex = tpsCloseIndex + 6;
+                                                            lastProcessedIndex = tpsCloseIndex + 6; 
                                                         }
 
 
-                                                        if (currentTextChunkOnly && !firstChunkReceived) { 
+                                                        if (currentTextChunkOnly.trim() && !firstChunkReceived) { 
                                                                 firstChunkReceived = true;
                                                                 assistantBubble.innerHTML = ''; 
-                                                                assistantBubble.appendChild(copyBtn); 
+                                                                assistantBubble.appendChild(copyBtn);
                                                                 copyBtn.style.display = 'inline-block';
                                                         }
 
-                                                        if (firstChunkReceived) { 
+                                                        if (firstChunkReceived) {
                                                                 const cleanTextForDisplay = assistantRawAccumulated.replace(/<tps>.*?<\/tps>/g, "");
                                                                 const html = marked.parse(cleanTextForDisplay);
                                                                 
-                                                                const speakerIcon = assistantBubble.querySelector('.tts-speaker-icon');
-                                                                const tpsDiv = assistantBubble.querySelector('.tps');
-                                                                const currentCopyBtn = assistantBubble.querySelector('.copy-button'); 
+                                                                const existingSpeakerIcon = assistantBubble.querySelector('.tts-speaker-icon');
+                                                                const existingCopyBtn = assistantBubble.querySelector('.copy-button');
+                                                                const existingTpsDiv = assistantBubble.querySelector('.tps');
                                                                 
                                                                 const contentDiv = document.createElement('div');
-                                                                contentDiv.innerHTML = html;
+                                                                contentDiv.innerHTML = html; 
                                                                 
                                                                 assistantBubble.innerHTML = ''; 
                                                                 while(contentDiv.firstChild) { 
                                                                     assistantBubble.appendChild(contentDiv.firstChild);
                                                                 }
+                                                                if(existingSpeakerIcon) assistantBubble.appendChild(existingSpeakerIcon);
+                                                                if(existingCopyBtn) assistantBubble.appendChild(existingCopyBtn); else if (copyBtn.style.display !== 'none') assistantBubble.appendChild(copyBtn);
+                                                                if(existingTpsDiv) assistantBubble.appendChild(existingTpsDiv);
 
-                                                                if(speakerIcon) assistantBubble.appendChild(speakerIcon);
-                                                                if(currentCopyBtn) assistantBubble.appendChild(currentCopyBtn); else assistantBubble.appendChild(copyBtn);
-                                                                if(tpsDiv) assistantBubble.appendChild(tpsDiv);
 
-
-                                                                if (tpsFoundInChunk && tpsText) { 
+                                                                if (tpsFoundInChunk && tpsText) {
                                                                     let tpsSpan = assistantBubble.querySelector(".tps");
                                                                     if (!tpsSpan) {
                                                                             tpsSpan = document.createElement("div");
                                                                             tpsSpan.className = "tps";
-                                                                            assistantBubble.appendChild(tpsSpan);
+                                                                            assistantBubble.appendChild(tpsSpan); 
                                                                     }
                                                                     tpsSpan.innerText = `⚡ ${tpsText} tokens/sec`;
                                                                 }
                                                         }
-                                                        
-                                                        assistantBubble.dataset.rawFullText = assistantRawForTTS; 
-
+                                                        assistantBubble.dataset.rawFullText = assistantRawAccumulated.replace(/<tps>.*?<\/tps>/g, ""); 
                                                         chatBox.scrollTop = chatBox.scrollHeight;
 
                                                         if (done) {
-                                                                if (!firstChunkReceived) {
-                                                                        assistantBubble.innerHTML = "<span style='color:grey;'>응답이 없습니다.</span>";
-                                                                        copyBtn.style.display = 'none';
-                                                                }
+                                                            const serverPrefixPattern = `🧑‍💻 ${finalPrompt}\n🤖 `;
+                                                            let textForSpeechSynthesis = assistantRawForTTS;
+
+                                                            if (assistantRawForTTS.startsWith(serverPrefixPattern)) {
+                                                                textForSpeechSynthesis = assistantRawForTTS.substring(serverPrefixPattern.length);
+                                                                console.log("Server prefix stripped for TTS.");
+                                                            } else {
                                                                 if (assistantRawForTTS.trim() !== "") {
-                                                                    playTTSSound(assistantRawForTTS.trim(), assistantBubble);
+                                                                    console.warn("Server prefix was not found as expected. TTS will use the full received assistant response.");
                                                                 }
-                                                                return;
+                                                            }
+
+                                                            if (!firstChunkReceived && assistantBubble.innerHTML.includes("⏳")) {
+                                                                const actualContentForDisplay = textForSpeechSynthesis.trim();
+                                                                if (actualContentForDisplay === "") {
+                                                                    assistantBubble.innerHTML = "<span style='color:grey;'>응답이 없습니다.</span>";
+                                                                    copyBtn.style.display = 'none';
+                                                                } else {
+                                                                    if(copyBtn.style.display === 'none' && assistantBubble.querySelector('.copy-button')) {
+                                                                        assistantBubble.querySelector('.copy-button').style.display = 'inline-block';
+                                                                    }
+                                                                }
+                                                            }
+                                                            
+                                                            if (textForSpeechSynthesis.trim() !== "") {
+                                                                playTTSSound(textForSpeechSynthesis.trim(), assistantBubble);
+                                                            } else {
+                                                                console.log("TTS content is empty after processing. No sound will be played.");
+                                                                if (assistantBubble.innerHTML.includes("⏳")) { 
+                                                                     assistantBubble.innerHTML = "<span style='color:grey;'>응답이 없습니다.</span>";
+                                                                     copyBtn.style.display = 'none';
+                                                                }
+                                                            }
+                                                            return;
                                                         }
                                                         if (!abortController.signal.aborted) read();
                                                 }).catch(err => {
@@ -808,7 +888,7 @@
                                 .catch(err => {
                                         if (err.name === 'AbortError' || (abortController && abortController.signal.aborted)) {
                                                 console.log('Fetch request aborted.');
-                                                if (assistantBubble.innerHTML.includes("⏳")) {
+                                                if (assistantBubble.innerHTML.includes("⏳")) { 
                                                         assistantBubble.innerHTML = "<span style='color:orange;'>요청이 중단되었습니다.</span>";
                                                         copyBtn.style.display = 'none';
                                                 }

@@ -50,6 +50,7 @@ def synthesize_speech_openai(text_to_synthesize, voice="alloy"):
     """
     OpenAI TTS API를 사용하여 텍스트를 음성으로 변환합니다.
     """
+    print(text_to_synthesize)
     if not openai.api_key:
         return None, "OpenAI API 키가 설정되지 않았습니다."
     try:
