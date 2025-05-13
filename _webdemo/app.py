@@ -6,45 +6,93 @@ import os
 from pydub import AudioSegment
 import pydub.exceptions # pydub 예외를 명시적으로 임포트
 import tempfile # 임시 파일 생성을 위해 임포트
-import assemblyai as aai
-import openai
+# import assemblyai as aai # AssemblyAI는 더 이상 사용하지 않음
+import openai # OpenAI 라이브러리 유지
+
 app = Flask(__name__)
 LLAMA_SERVER_URL = "http://localhost:8080/v1/chat/completions"
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-aai.settings.api_key = os.getenv("AAI_API_KEY")
+
+if not OPENAI_API_KEY:
+    print("경고: OPENAI_API_KEY 환경 변수가 설정되지 않았습니다. STT 및 TTS 기능이 제한될 수 있습니다.")
+else:
+    openai.api_key = OPENAI_API_KEY # OpenAI 라이브러리에 API 키 설정
 
 
 def transcribe_audio_openai(audio_file_path):
-    if not OPENAI_API_KEY:
+    if not OPENAI_API_KEY: # openai.api_key로 확인해도 됨
         return None, "OpenAI API 키가 설정되지 않았습니다."
     try:
-        client = openai.OpenAI(api_key=OPENAI_API_KEY) # 함수 호출 시 클라이언트 초기화
+        client = openai.OpenAI() # API 키는 환경 변수 또는 openai.api_key로 설정된 것을 사용
         with open(audio_file_path, "rb") as audio_file:
             transcription = client.audio.transcriptions.create(
-                model="whisper-1",
+                model="gpt-4o-mini-transcribe",
                 file=audio_file
             )
-        return transcription.text, None
+        if hasattr(transcription, 'text'):
+            return transcription.text, None
+        else:
+            print(f"DEBUG: OpenAI STT 응답 형식 불일치: {transcription}")
+            return None, "OpenAI STT 응답에서 텍스트를 찾을 수 없습니다."
     except openai.APIError as e:
-        print(f"OpenAI API 오류: {e}")
-        return None, f"OpenAI API 오류: {str(e)}"
+        print(f"OpenAI STT API 오류: {e}")
+        error_message = f"STT API 오류: {e.status_code}"
+        if hasattr(e, 'message'): error_message += f" - {e.message}"
+        return None, error_message
     except Exception as e:
-        print(f"STT 변환 중 일반 오류 발생: {e}")
+        print(f"STT 변환 중 일반 오류 발생: {type(e).__name__} - {e}")
         return None, f"STT 변환 중 오류 발생: {str(e)}"
 
-def transcribe_audio_aai(audio_file_path):    
-    config = aai.TranscriptionConfig(speech_model=aai.SpeechModel.best)
-    transcript = aai.Transcriber(config=config).transcribe(audio_file_path)
-    if transcript.status == "error":
-        return None, 'error!'
-    else:
-        return transcript.text, None
-        
+
+
+def synthesize_speech_openai(text_to_synthesize, voice="alloy"):
+    """
+    OpenAI TTS API를 사용하여 텍스트를 음성으로 변환합니다.
+    """
+    if not openai.api_key:
+        return None, "OpenAI API 키가 설정되지 않았습니다."
+    try:
+        client = openai.OpenAI()
+        response = client.audio.speech.create(
+            model="gpt-4o-mini-tts",  # 또는 "tts-1-hd"
+            voice=voice,    # 사용 가능한 목소리: alloy, echo, fable, onyx, nova, shimmer
+            input=text_to_synthesize,
+            response_format="mp3" # 기본값 mp3, 다른 옵션: opus, aac, flac
+        )
+        # response.content에 오디오 데이터가 들어있음
+        return response.content, None
+    except openai.APIError as e:
+        print(f"OpenAI TTS API 오류: {e}")
+        error_message = f"TTS API 오류: {e.status_code}"
+        if hasattr(e, 'message'): error_message += f" - {e.message}"
+        return None, error_message
+    except Exception as e:
+        print(f"TTS 생성 중 일반 오류 발생: {type(e).__name__} - {e}")
+        return None, f"TTS 생성 중 오류 발생: {str(e)}"
 
 @app.route("/")
 def index():
     return render_template("chat.html")
+
+@app.route("/synthesize_speech", methods=["POST"])
+def synthesize_speech_route():
+    data = request.json
+    text_to_synthesize = data.get("text", "")
+    voice_preference = data.get("voice", "nova") # 클라이언트에서 목소리 선호도를 받을 수 있음
+
+    if not text_to_synthesize:
+        return jsonify({"error": "TTS를 위한 텍스트가 제공되지 않았습니다."}), 400
+
+    if not openai.api_key: # 함수 호출 전에 한 번 더 키 확인
+        return jsonify({"error": "OpenAI API 키가 서버에 설정되지 않았습니다."}), 500
+
+    audio_content, error = synthesize_speech_openai(text_to_synthesize, voice=voice_preference)
+
+    if error:
+        return jsonify({"error": error}), 500
+
+    return Response(audio_content, mimetype="audio/mpeg") # MP3 포맷으로 응답
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -52,16 +100,12 @@ def chat():
     user_input = data.get("prompt", "")
 
     payload = {
-        "model": "model.gguf",
+        "model": "model.gguf", # 실제 사용하는 모델명으로 변경 필요
         "messages": [{"role": "user", "content": user_input}],
         "stream": True
     }
 
     def generate():
-        # 사용자 입력을 🎤 심볼과 함께 표시 (STT 결과인 경우) 또는 일반 텍스트로 표시
-        # 이 부분은 클라이언트에서 처리하므로 서버에서는 그대로 user_input을 사용하거나,
-        # 클라이언트에서 STT 결과임을 명시하는 prefix를 붙여서 보내면 여기서도 반영 가능.
-        # 현재 클라이언트에서 "🎤: "를 붙이므로 여기서는 특별히 수정하지 않음.
         yield f"🧑‍💻 {user_input}\n🤖 "
         token_count = 0
         start_time = time.time()
@@ -86,7 +130,7 @@ def chat():
                                 else:
                                     delta = ""
                                 if delta:
-                                    token_count += len(delta.strip().split()) # 단순 공백 기준 단어 수
+                                    token_count += len(delta.strip().split())
                                     yield delta
                                     elapsed = time.time() - start_time
                                     if elapsed > 0:
@@ -111,19 +155,19 @@ def chat():
 def upload_audio():
     if 'audio_data' not in request.files:
         return jsonify({"error": "오디오 파일 부분이 요청에 없습니다.", "file_saved": False, "transcribed_text": None}), 400
-    
+
     file = request.files['audio_data']
-    
+
     if not file or file.filename == '':
         return jsonify({"error": "파일이 비어있거나 선택되지 않았습니다.", "file_saved": False, "transcribed_text": None}), 400
-    
+
     target_filename = "record.mp3"
-    temp_file_path = None # 임시 파일 경로 초기화
+    temp_file_path = None
 
     try:
         content_type = file.content_type or 'application/octet-stream'
         extension_hint = "." + content_type.split('/')[-1].split(';')[0]
-        
+
         if extension_hint == ".octet-stream":
             extension_hint = ""
         if "webm" in content_type:
@@ -134,7 +178,7 @@ def upload_audio():
         with tempfile.NamedTemporaryFile(delete=False, suffix=extension_hint) as temp_f:
             file.save(temp_f.name)
             temp_file_path = temp_f.name
-        
+
         print(f"DEBUG: 오디오 업로드 시도. Content-Type: {content_type}, 임시 파일: {temp_file_path}")
 
         try:
@@ -152,28 +196,30 @@ def upload_audio():
                 audio = AudioSegment.from_file(temp_file_path, format=explicit_format)
             else:
                 raise
-        
+
         audio.export(target_filename, format="mp3")
         print(f"INFO: 오디오 파일이 '{target_filename}'으로 저장되었습니다.")
 
-        # STT 변환 시도
+        # OpenAI STT 함수 사용
         transcribed_text, transcription_error = transcribe_audio_openai(target_filename)
+
         if transcription_error:
             print(f"ERROR_TRANSCRIPTION: {transcription_error}")
             return jsonify({
                 "message": f"'{target_filename}'에 오디오가 저장되었으나, STT 변환에 실패했습니다: {transcription_error}",
                 "file_saved": True,
                 "transcribed_text": None
-            }), 200 # 파일 저장은 성공했으므로 200, 클라이언트에서 transcribed_text 유무로 처리
-        
-        if transcribed_text != None and transcribed_text != '':
+            }), 200
+
+        if transcribed_text is not None and transcribed_text.strip() != '':
             print(f"INFO: 오디오 STT 변환 결과: {transcribed_text}")
             return jsonify({
                 "message": f"'{target_filename}'에 오디오가 저장 및 STT 변환되었습니다.",
                 "file_saved": True,
                 "transcribed_text": transcribed_text
             }), 200
-        else: # transcribed_text가 None이지만 명시적 오류가 없었던 경우 (예: 빈 오디오)
+        else:
+             print(f"INFO: STT 변환 결과가 없습니다. (결과: '{transcribed_text}')")
              return jsonify({
                 "message": f"'{target_filename}'에 오디오가 저장되었으나, STT 변환 결과가 없습니다 (예: 음성이 없는 오디오).",
                 "file_saved": True,
@@ -193,13 +239,19 @@ def upload_audio():
         return jsonify({"error": f"MP3로 오디오를 저장하는데 실패했습니다. 오류 유형: {type(e).__name__}", "file_saved": False, "transcribed_text": None}), 500
     finally:
         if temp_file_path and os.path.exists(temp_file_path):
-            # CouldntDecodeError 발생 시 디버깅을 위해 임시 파일을 남기려면 아래 라인을 조건부로 실행
-            # 현재 로직에서는 모든 경우에 삭제 시도
             try:
                 os.remove(temp_file_path)
                 print(f"DEBUG: 임시 파일 삭제: {temp_file_path}")
             except Exception as e_remove:
                 print(f"ERROR: 임시 파일 삭제 중 오류: {e_remove}")
+        # target_filename (record.mp3)은 STT/TTS 처리 후 필요에 따라 삭제할 수 있습니다.
+        # 현재는 유지됩니다.
 
 if __name__ == "__main__":
+    if not OPENAI_API_KEY:
+        print("="*50)
+        print("경고: OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
+        print("OpenAI STT 및 TTS 기능을 사용하려면 API 키를 설정해야 합니다.")
+        print("예: export OPENAI_API_KEY=\"sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"")
+        print("="*50)
     app.run(host="0.0.0.0", port=5000, debug=True)
