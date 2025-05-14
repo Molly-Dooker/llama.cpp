@@ -27,7 +27,8 @@ def transcribe_audio_openai(audio_file_path):
         client = openai.OpenAI() # API 키는 환경 변수 또는 openai.api_key로 설정된 것을 사용
         with open(audio_file_path, "rb") as audio_file:
             transcription = client.audio.transcriptions.create(
-                model="gpt-4o-mini-transcribe",
+                model="whisper-1", 
+                language='en',
                 file=audio_file
             )
         if hasattr(transcription, 'text'):
