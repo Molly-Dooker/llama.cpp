@@ -375,9 +375,6 @@
                     }
                 }
 
-                // Removed cleanupAudioPlayerOnEndOrError as its logic is now simpler and handled directly
-                // in onended/onerror, or by updateSpeakerState.
-
                 function playTTSSound(text, bubbleElement) {
                     console.log("Requesting TTS for:", text);
                     if (!text || text.trim() === "") {
@@ -498,13 +495,12 @@
                             updateSpeakerState(playerData, false); 
                         });
 
-                        // MODIFICATION: onended and onerror handlers
                         audio.onended = () => {
                             console.log("TTS 오디오 재생 완료.");
                             updateRecordStatus("음성 재생 완료.", 'success');
                             const pData = activeTTSPlayers.find(p => p.audio === audio);
                             if (pData) {
-                                updateSpeakerState(pData, false); // Reset state, keep in list for replay
+                                updateSpeakerState(pData, false); 
                             }
                         };
                         audio.onerror = (e_audio_err) => {
@@ -512,13 +508,9 @@
                             updateRecordStatus("음성 재생 중 오류 발생.", 'error');
                             const pData = activeTTSPlayers.find(p => p.audio === audio);
                             if (pData) {
-                                updateSpeakerState(pData, false); // Reset state, keep in list for replay (unless error is fatal)
-                                // Optionally, to prevent replay on persistent errors, you could remove it:
-                                // activeTTSPlayers.splice(activeTTSPlayers.indexOf(pData), 1);
-                                // console.log("오류로 인해 플레이어가 활성 목록에서 제거되었습니다.");
+                                updateSpeakerState(pData, false); 
                             }
                         };
-                        // END OF MODIFICATION
                     })
                     .catch(error => {
                         if (ttsStatusIntervalId) {
@@ -531,9 +523,32 @@
                         if (speakerIcon) speakerIcon.innerHTML = "🔇";
                     });
                 }
-                // ... (recordBtn and sendChat functions from your provided script) ...
+                
                 recordBtn.addEventListener('click', async () => {
                         if (!isRecording) {
+                                // --- 녹음 시작 시, 모든 활성 TTS 오디오 중지 ---
+                                let audioWasPlaying = false;
+                                activeTTSPlayers.forEach(playerData => {
+                                    if (playerData.audio) {
+                                        if (playerData.isPlaying) {
+                                            playerData.audio.pause();
+                                            playerData.audio.currentTime = 0;
+                                            playerData.isPlaying = false; // 상태 업데이트
+                                            audioWasPlaying = true;
+                                            console.log("TTS 오디오 중지됨 (녹음 시작으로 인해)");
+                                        }
+                                        // 아이콘 상태도 초기화 (항상 '재생 가능'으로)
+                                        if (playerData.speakerIcon) {
+                                            playerData.speakerIcon.innerHTML = "🔊";
+                                            playerData.speakerIcon.title = "소리 재생";
+                                        }
+                                    }
+                                });
+                                if (audioWasPlaying) {
+                                   updateRecordStatus('모든 재생 중인 오디오가 중지되었습니다.', 'info');
+                                }
+                                // --- 오디오 중지 로직 끝 ---
+
                                 try {
                                         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                                         const options = {};
@@ -565,7 +580,7 @@
                                                     console.log('No audio data recorded or recording was reset.');
                                                     updateRecordStatus('녹음된 데이터가 없거나 취소되었습니다.', 'error');
                                                     currentStreamTracks.forEach(track => track.stop());
-                                                    if (isRecording) {
+                                                    if (isRecording) { // Check if it was recording (e.g. stopped by reset)
                                                         isRecording = false;
                                                         recordBtn.innerHTML = '🎤 녹음 시작';
                                                         recordBtn.classList.remove('recording');
@@ -575,12 +590,12 @@
 
                                                 const blobMimeType = mediaRecorder.mimeType || (options.mimeType || 'audio/webm');
                                                 const audioBlob = new Blob(audioChunks, { type: blobMimeType });
-                                                audioChunks = []; // Clear chunks for next recording
+                                                audioChunks = []; 
                                                 const formData = new FormData();
                                                 let recordingFilename = 'recording';
                                                 if (blobMimeType.includes('webm')) recordingFilename += '.webm';
                                                 else if (blobMimeType.includes('ogg')) recordingFilename += '.ogg';
-                                                else recordingFilename += '.bin'; // Fallback extension
+                                                else recordingFilename += '.bin'; 
 
                                                 formData.append('audio_data', audioBlob, recordingFilename);
 
@@ -612,7 +627,7 @@
                                                                 if (result.transcribed_text && result.transcribed_text.trim() !== "") {
                                                                         console.log(`STT 변환 결과: ${result.transcribed_text}`);
                                                                         updateRecordStatus(`음성인식 결과: ${result.transcribed_text}`, 'success');
-                                                                        sendChat(result.transcribed_text, true); // Send STT result to chat
+                                                                        sendChat(result.transcribed_text, true); 
                                                                 } else {
                                                                         const customMessage = "음성인식에 실패했거나 음성이 감지되지 않았습니다.";
                                                                         console.warn(customMessage + ` (서버 상세: ${result.message || 'STT 결과 없음'})`);
@@ -636,7 +651,7 @@
                                                                 clearInterval(sttStatusIntervalId);
                                                                 sttStatusIntervalId = null;
                                                         }
-                                                        currentStreamTracks.forEach(track => track.stop()); // Stop microphone tracks
+                                                        currentStreamTracks.forEach(track => track.stop()); 
                                                 }
                                         };
 
@@ -661,7 +676,7 @@
                                 }
                         } else { // Stop recording
                                 if (mediaRecorder && mediaRecorder.state !== 'inactive') {
-                                        mediaRecorder.stop(); // This will trigger mediaRecorder.onstop
+                                        mediaRecorder.stop(); 
                                 }
                                 isRecording = false;
                                 recordBtn.innerHTML = '🎤 녹음 시작';
