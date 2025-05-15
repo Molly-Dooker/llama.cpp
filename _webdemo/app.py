@@ -15,7 +15,8 @@ LLAMA_SERVER_URL = "http://localhost:8080/v1/chat/completions"
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 if not OPENAI_API_KEY:
-    print("경고: OPENAI_API_KEY 환경 변수가 설정되지 않았습니다. STT 및 TTS 기능이 제한될 수 있습니다.")
+    # TTS 기능 제거로 인해 경고 메시지에서 TTS 부분 삭제
+    print("경고: OPENAI_API_KEY 환경 변수가 설정되지 않았습니다. STT 기능이 제한될 수 있습니다.")
 else:
     openai.api_key = OPENAI_API_KEY # OpenAI 라이브러리에 API 키 설정
 
@@ -27,8 +28,6 @@ def transcribe_audio_openai(audio_file_path):
         client = openai.OpenAI() # API 키는 환경 변수 또는 openai.api_key로 설정된 것을 사용
         with open(audio_file_path, "rb") as audio_file:
             transcription = client.audio.transcriptions.create(
-                # model="whisper-1", 
-                # language='en',
                 model='gpt-4o-transcribe',
                 file=audio_file
             )
@@ -47,11 +46,12 @@ def transcribe_audio_openai(audio_file_path):
         return None, f"STT 변환 중 오류 발생: {str(e)}"
 
 
-
+# synthesize_speech_openai 함수 전체 주석 처리 또는 삭제
+"""
 def synthesize_speech_openai(text_to_synthesize, voice="alloy"):
-    """
+    \"\"\"
     OpenAI TTS API를 사용하여 텍스트를 음성으로 변환합니다.
-    """
+    \"\"\"
     print(text_to_synthesize)
     if not openai.api_key:
         return None, "OpenAI API 키가 설정되지 않았습니다."
@@ -59,7 +59,7 @@ def synthesize_speech_openai(text_to_synthesize, voice="alloy"):
         client = openai.OpenAI()
         response = client.audio.speech.create(
             model="gpt-4o-mini-tts",  # 또는 "tts-1-hd"
-            voice=voice,    # 사용 가능한 목소리: alloy, echo, fable, onyx, nova, shimmer
+            voice=voice,     # 사용 가능한 목소리: alloy, echo, fable, onyx, nova, shimmer
             input=text_to_synthesize,
             response_format="mp3" # 기본값 mp3, 다른 옵션: opus, aac, flac
         )
@@ -73,11 +73,14 @@ def synthesize_speech_openai(text_to_synthesize, voice="alloy"):
     except Exception as e:
         print(f"TTS 생성 중 일반 오류 발생: {type(e).__name__} - {e}")
         return None, f"TTS 생성 중 오류 발생: {str(e)}"
+"""
 
 @app.route("/")
 def index():
     return render_template("chat.html")
 
+# /synthesize_speech 라우트 전체 주석 처리 또는 삭제
+"""
 @app.route("/synthesize_speech", methods=["POST"])
 def synthesize_speech_route():
     data = request.json
@@ -96,6 +99,7 @@ def synthesize_speech_route():
         return jsonify({"error": error}), 500
 
     return Response(audio_content, mimetype="audio/mpeg") # MP3 포맷으로 응답
+"""
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -133,7 +137,7 @@ def chat():
                                 else:
                                     delta = ""
                                 if delta:
-                                    token_count += len(delta.strip().split())
+                                    token_count += len(delta.strip().split()) # 단순화된 토큰 계산
                                     yield delta
                                     elapsed = time.time() - start_time
                                     if elapsed > 0:
@@ -222,8 +226,8 @@ def upload_audio():
                 "transcribed_text": transcribed_text
             }), 200
         else:
-             print(f"INFO: STT 변환 결과가 없습니다. (결과: '{transcribed_text}')")
-             return jsonify({
+            print(f"INFO: STT 변환 결과가 없습니다. (결과: '{transcribed_text}')")
+            return jsonify({
                 "message": f"'{target_filename}'에 오디오가 저장되었으나, STT 변환 결과가 없습니다 (예: 음성이 없는 오디오).",
                 "file_saved": True,
                 "transcribed_text": None
@@ -254,7 +258,8 @@ if __name__ == "__main__":
     if not OPENAI_API_KEY:
         print("="*50)
         print("경고: OPENAI_API_KEY 환경 변수가 설정되지 않았습니다.")
-        print("OpenAI STT 및 TTS 기능을 사용하려면 API 키를 설정해야 합니다.")
+        # TTS 기능 제거로 인해 경고 메시지에서 TTS 부분 삭제
+        print("OpenAI STT 기능을 사용하려면 API 키를 설정해야 합니다.")
         print("예: export OPENAI_API_KEY=\"sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"")
         print("="*50)
     app.run(host="0.0.0.0", port=5000, debug=True)
