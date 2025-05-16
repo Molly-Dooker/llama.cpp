@@ -1,11 +1,11 @@
+import time
+import random # random.choice를 사용하지 않으므로 이 줄은 사실상 필요 없지만, 다른 곳에서 사용할 수도 있으니 유지합니다.
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
-import time
-import random
 
 # --- 테스트 설정 ---
 BASE_URL = "http://localhost:5000"  # chat.html이 제공되는 URL
@@ -72,7 +72,7 @@ def wait_for_streaming_completion(driver, num_bubbles_before, timeout_seconds):
 
     last_raw_text = None
     stable_checks_count = 0
-    
+
     while True:
         if time.time() - overall_start_time > timeout_seconds:
             raise TimeoutException(f"스트리밍 응답이 {timeout_seconds}초 내에 완료(안정화)되지 않았습니다.")
@@ -122,13 +122,17 @@ def run_stress_test(driver):
     failed_sends = 0
     response_times = []
     message_count = 0 # 메시지 카운터 초기화
+    current_prompt_index = 0 # <<< 프롬프트 인덱스 초기화
 
     try: # KeyboardInterrupt를 감지하기 위한 try 블록
         while True: # 무한 루프
             message_count += 1
-            current_prompt = random.choice(TEST_PROMPTS)
-            print(f"\n--- 메시지 {message_count} 전송 시도 ---")
+            # current_prompt = random.choice(TEST_PROMPTS) # <<< 기존 랜덤 선택 주석 처리
+            current_prompt = TEST_PROMPTS[current_prompt_index] # <<< 순서대로 프롬프트 선택
+            print(f"\n--- 메시지 {message_count} (프롬프트 인덱스: {current_prompt_index}) 전송 시도 ---")
             print(f"프롬프트: {current_prompt}")
+
+            current_prompt_index = (current_prompt_index + 1) % len(TEST_PROMPTS) # <<< 다음 인덱스로, 마지막이면 처음으로
 
             try:
                 chat_input_element = driver.find_element(By.CSS_SELECTOR, CHAT_INPUT_SELECTOR)
@@ -143,7 +147,7 @@ def run_stress_test(driver):
                 print("메시지 전송 완료. 응답 스트리밍 완료 대기 중...")
 
                 wait_for_streaming_completion(driver, num_assistant_bubbles_before, MAX_RESPONSE_WAIT_TIME)
-                
+
                 end_time = time.time()
                 response_time = end_time - start_time
                 response_times.append(response_time)
@@ -171,7 +175,7 @@ def run_stress_test(driver):
                 failed_sends += 1
                 driver.save_screenshot(f"general_error_{message_count}.png")
                 print(f"스크린샷 'general_error_{message_count}.png' 저장됨.")
-            
+
             print(f"{MESSAGE_INTERVAL_SECONDS}초 대기...")
             time.sleep(MESSAGE_INTERVAL_SECONDS)
 
