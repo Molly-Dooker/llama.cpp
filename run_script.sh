@@ -16,7 +16,7 @@ CMD2="$PYTHON_EXEC_CMD2 $APP_PY_SCRIPT"
 STRESS_TEST_SCRIPT_NAME="_auto_test_app.py" # 오토 테스트 Python 스크립트 파일명
 # 스크립트의 실제 위치에 따라 경로를 조정하세요.
 # 현재 디렉토리에 있다고 가정. 만약 다른 곳에 있다면 절대 경로로 지정하는 것이 좋음.
-STRESS_TEST_SCRIPT_PATH="./$STRESS_TEST_SCRIPT_NAME"
+STRESS_TEST_SCRIPT_PATH="$REPOPATH/$STRESS_TEST_SCRIPT_NAME"
 # STRESS_TEST_SCRIPT_PATH="$REPOPATH/tests/$STRESS_TEST_SCRIPT_NAME" # 예시: repo 내 다른 경로
 
 STRESS_TEST_CMD_BASE="$PYTHON_EXEC_CMD2 $STRESS_TEST_SCRIPT_PATH" # 기본 명령어 템플릿
