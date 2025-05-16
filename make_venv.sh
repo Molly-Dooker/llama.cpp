@@ -4,3 +4,4 @@ uv pip install -r ./requirements/requirements-tool_bench.txt
 uv pip install huggingface-hub==0.31.1
 uv pip install flask==3.1.0
 uv pip install pydub==0.25.1
+uv pip install selenium==4.32.0
